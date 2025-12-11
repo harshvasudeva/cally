@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cally - Self-Hosted Calendar & Scheduling
 
-## Getting Started
+A powerful, self-hosted calendar application combining the best features of **Calendly** and **Google Calendar**. Built with Next.js for easy deployment.
 
-First, run the development server:
+![Cally](https://img.shields.io/badge/Cally-Calendar-6366f1?style=for-the-badge)
+
+## ✨ Features
+
+- 📅 **Multi-View Calendar** - Day, Week, Month, and Agenda views
+- 🗓️ **Appointment Scheduling** - Calendly-style public booking pages
+- ⏰ **Availability Management** - Set your working hours
+- 📥 **Import/Export** - ICS file support (Google Calendar, Outlook, Apple)
+- 🔄 **Recurring Events** - Daily, weekly, monthly patterns
+- 👥 **Admin Dashboard** - User management and settings
+- 🌍 **Timezone Support** - Automatic timezone detection
+- ⏱️ **Buffer Times** - Gaps between appointments
+- 🎨 **Premium UI** - Dark theme with glassmorphism
+
+## 🚀 Quick Start
 
 ```bash
+# Clone and install
+git clone <repo-url> cally
+cd cally
+npm install
+
+# Setup database
+npx prisma migrate dev
+
+# Run the app
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🔧 Configuration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a `.env.local` file:
 
-## Learn More
+```env
+DATABASE_URL="file:./dev.db"
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
+```
 
-To learn more about Next.js, take a look at the following resources:
+## 📖 Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### First Time Setup
+1. Register an account (first user becomes admin)
+2. Set your availability in `/availability`
+3. Create event types in `/appointment-types`
+4. Share your booking link: `/book/your-username`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### For Guests
+1. Visit your host's booking page
+2. Select a date and available time
+3. Fill in your details
+4. Receive confirmation
 
-## Deploy on Vercel
+## 🐳 Docker Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY . .
+RUN npm ci
+RUN npx prisma generate
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+docker build -t cally .
+docker run -p 3000:3000 cally
+```
+
+## 📁 Project Structure
+
+```
+├── prisma/          # Database schema
+├── src/
+│   ├── app/         # Next.js pages
+│   │   ├── api/     # API routes
+│   │   ├── admin/   # Admin pages
+│   │   └── book/    # Public booking
+│   ├── components/  # React components
+│   └── lib/         # Utilities
+```
+
+## 🛠️ Tech Stack
+
+- **Next.js 16** - React framework
+- **Prisma** - Database ORM
+- **SQLite** - Database (easy to switch to PostgreSQL)
+- **NextAuth.js** - Authentication
+- **FullCalendar** - Calendar component
+- **Tailwind CSS** - Styling
+
+## 📝 License
+
+MIT License - feel free to use for any purpose.
+
+---
+
+Built with ❤️ for self-hosters

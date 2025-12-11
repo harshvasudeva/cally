@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  name          String
+  role          String         @default("USER")
+  timezone      String         @default("UTC")
+  slug          String         @unique
+  avatarUrl     String?
+  events        Event[]
+  availability  Availability[]
+  appointments  Appointment[]
+  appointmentTypes AppointmentType[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  start       DateTime
+  end         DateTime
+  allDay      Boolean  @default(false)
+  color       String   @default("#3b82f6")
+  category    String?
+  location    String?
+  recurrence  String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Availability {
+  id        String  @id @default(cuid())
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  isActive  Boolean @default(true)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id              String          @id @default(cuid())
+  title           String
+  start           DateTime
+  end             DateTime
+  status          String          @default("PENDING")
+  guestEmail      String
+  guestName       String
+  guestPhone      String?
+  guestNotes      String?
+  formData        String?
+  meetingLink     String?
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointmentTypeId String?
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model AppointmentType {
+  id           String        @id @default(cuid())
+  name         String
+  slug         String
+  duration     Int
+  bufferBefore Int           @default(0)
+  bufferAfter  Int           @default(0)
+  color        String        @default("#8b5cf6")
+  description  String?
+  location     String?
+  formFields   String?
+  isActive     Boolean       @default(true)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([userId, slug])
+}
+
+model Settings {
+  id              String  @id @default(cuid())
+  siteName        String  @default("Cally")
+  siteDescription String  @default("Self-hosted calendar and scheduling")
+  primaryColor    String  @default("#3b82f6")
+  emailFrom       String?
+  smtpHost        String?
+  smtpPort        Int?
+  smtpUser        String?
+  smtpPass        String?
+  allowRegistration Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
