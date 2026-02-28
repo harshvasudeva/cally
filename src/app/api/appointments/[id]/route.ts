@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { createAuditLog } from "@/lib/audit"
 
 // GET single appointment
 export async function GET(
@@ -68,6 +69,25 @@ export async function PUT(
             include: { appointmentType: true }
         })
 
+        // (#4) Audit log
+        const auditAction = status === "CONFIRMED"
+            ? "APPOINTMENT_CONFIRM" as const
+            : status === "CANCELLED"
+                ? "APPOINTMENT_CANCEL" as const
+                : "APPOINTMENT_UPDATE" as const
+
+        await createAuditLog({
+            action: auditAction,
+            entity: "Appointment",
+            entityId: id,
+            details: {
+                title: appointment.title,
+                previousStatus: existingAppointment.status,
+                newStatus: status,
+            },
+            userId,
+        })
+
         return NextResponse.json(appointment)
     } catch (error) {
         console.error("Error updating appointment:", error)
@@ -100,6 +120,18 @@ export async function DELETE(
 
         await prisma.appointment.delete({
             where: { id }
+        })
+
+        // (#4) Audit log
+        await createAuditLog({
+            action: "APPOINTMENT_DELETE",
+            entity: "Appointment",
+            entityId: id,
+            details: {
+                title: existingAppointment.title,
+                guestEmail: existingAppointment.guestEmail,
+            },
+            userId,
         })
 
         return NextResponse.json({ message: "Appointment deleted" })

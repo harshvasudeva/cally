@@ -6,6 +6,8 @@ export interface User {
     timezone: string
     slug: string
     avatarUrl?: string
+    theme?: "dark" | "light"
+    onboardingCompleted?: boolean
     createdAt: string
     updatedAt: string
 }
@@ -47,7 +49,10 @@ export interface Appointment {
     guestNotes?: string
     formData?: string
     meetingLink?: string
+    negotiationNote?: string
+    originalTime?: string
     userId: string
+    guestUserId?: string
     appointmentTypeId?: string
     appointmentType?: AppointmentType
     createdAt: string
@@ -66,9 +71,35 @@ export interface AppointmentType {
     location?: string
     formFields?: string
     isActive: boolean
+    minNotice: number     // (#63) minutes
+    maxPerDay: number     // (#64) 0 = unlimited
     userId: string
     createdAt: string
     updatedAt: string
+}
+
+export interface DateOverride {
+    id: string
+    date: string
+    isBlocked: boolean
+    startTime?: string
+    endTime?: string
+    reason?: string
+    userId: string
+    createdAt: string
+}
+
+export interface AuditLog {
+    id: string
+    action: string
+    entity?: string
+    entityId?: string
+    details?: string
+    ipAddress?: string
+    userAgent?: string
+    userId?: string
+    user?: { id: string; name: string; email: string }
+    createdAt: string
 }
 
 export interface TimeSlot {
@@ -88,4 +119,22 @@ export interface CalendarEvent {
         description?: string
         status?: string
     }
+}
+
+export interface Settings {
+    id: string
+    siteName: string
+    siteDescription: string
+    primaryColor: string
+    emailFrom?: string
+    smtpHost?: string
+    smtpPort?: number
+    smtpUser?: string
+    smtpPass?: string
+    discordBotToken?: string
+    discordClientId?: string
+    allowRegistration: boolean
+    maxLoginAttempts: number
+    lockoutDuration: number
+    maintenanceMode: boolean
 }

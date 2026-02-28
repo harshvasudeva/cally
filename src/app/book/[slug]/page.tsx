@@ -2,8 +2,10 @@
 
 import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
+import { useSession, signIn } from "next-auth/react"
+import Link from "next/link"
 import { format, parseISO, addDays } from "date-fns"
-import { Calendar, Clock, ChevronLeft, ChevronRight, Check, User, Mail, Phone, FileText } from "lucide-react"
+import { Calendar, Clock, ChevronLeft, ChevronRight, Check, User, Mail, Phone, FileText, Lock, ArrowRight } from "lucide-react"
 import { TimeSlot, AppointmentType } from "@/types"
 
 interface BookingPageProps {
@@ -13,16 +15,32 @@ interface BookingPageProps {
 export default function BookingPage({ params }: BookingPageProps) {
     const { slug } = use(params)
     const router = useRouter()
+    const { data: session } = useSession()
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [success, setSuccess] = useState(false)
     const [error, setError] = useState("")
     const [user, setUser] = useState<{ name: string; slug: string } | null>(null)
     const [appointmentType, setAppointmentType] = useState<AppointmentType | null>(null)
-    const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+
+    // Initialize date from URL or default to today
+    const [selectedDate, setSelectedDate] = useState<Date>(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search)
+            const dateParam = params.get("date")
+            return dateParam ? parseISO(dateParam) : new Date()
+        }
+        return new Date()
+    })
+
     const [slots, setSlots] = useState<TimeSlot[]>([])
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
     const [step, setStep] = useState<"date" | "time" | "form">("date")
+
+    // Negotiation State
+    const [isNegotiating, setIsNegotiating] = useState(false)
+    const [showAuthModal, setShowAuthModal] = useState(false)
+
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -33,6 +51,37 @@ export default function BookingPage({ params }: BookingPageProps) {
     useEffect(() => {
         fetchSlots()
     }, [selectedDate, slug])
+
+    // Effect to handle URL params for seamless auth return
+    useEffect(() => {
+        if (slots.length > 0 && typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search)
+            const slotParam = params.get("slot")
+            const negotiateParam = params.get("negotiate")
+
+            if (slotParam) {
+                // Find and select the slot
+                const slot = slots.find(s => s.start === slotParam)
+                if (slot) {
+                    setSelectedSlot(slot)
+                    setStep("form")
+                    if (negotiateParam === "true") {
+                        setIsNegotiating(true)
+                    }
+                }
+            }
+        }
+    }, [slots])
+
+    // Update URL helper
+    const updateUrl = (date: Date, slot?: TimeSlot, negotiating?: boolean) => {
+        const params = new URLSearchParams()
+        params.set("date", format(date, "yyyy-MM-dd"))
+        if (slot) params.set("slot", slot.start)
+        if (negotiating) params.set("negotiate", "true")
+
+        router.push(`/book/${slug}?${params.toString()}`, { scroll: false })
+    }
 
     const fetchSlots = async () => {
         try {
@@ -58,6 +107,12 @@ export default function BookingPage({ params }: BookingPageProps) {
         e.preventDefault()
         if (!selectedSlot || !appointmentType) return
 
+        // If negotiating and not confirmed auth (though UI shouldn't allow this), prevent
+        if (isNegotiating && !session) {
+            setShowAuthModal(true)
+            return
+        }
+
         setSubmitting(true)
         setError("")
 
@@ -68,11 +123,14 @@ export default function BookingPage({ params }: BookingPageProps) {
                 body: JSON.stringify({
                     start: selectedSlot.start,
                     end: selectedSlot.end,
-                    guestName: formData.name,
-                    guestEmail: formData.email,
+                    guestName: session?.user?.name || formData.name, // Use session name if logged in
+                    guestEmail: session?.user?.email || formData.email,
                     guestPhone: formData.phone,
                     guestNotes: formData.notes,
-                    appointmentTypeId: appointmentType.id
+                    appointmentTypeId: appointmentType.id,
+                    // Negotiation fields
+                    isNegotiation: isNegotiating,
+                    negotiationNote: isNegotiating ? formData.notes : undefined // Use notes as negotiation reason
                 })
             })
 
@@ -183,6 +241,7 @@ export default function BookingPage({ params }: BookingPageProps) {
                                                 setSelectedDate(date)
                                                 setSelectedSlot(null)
                                                 setStep("time")
+                                                updateUrl(date)
                                             }}
                                             className={`
                         p-3 rounded-xl text-center transition-all duration-200
@@ -275,84 +334,149 @@ export default function BookingPage({ params }: BookingPageProps) {
                                     <ChevronLeft size={20} />
                                 </button>
                                 <div>
-                                    <h2 className="text-lg font-semibold text-white">Enter Your Details</h2>
+                                    <h2 className="text-lg font-semibold text-white">
+                                        {isNegotiating ? "Propose New Time" : "Enter Your Details"}
+                                    </h2>
                                     <p className="text-sm text-slate-400">
                                         {format(selectedDate, "EEEE, MMMM d")} at {selectedSlot && format(parseISO(selectedSlot.start), "h:mm a")}
                                     </p>
                                 </div>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div>
-                                    <label className="label flex items-center gap-2">
-                                        <User size={16} className="text-slate-400" />
-                                        Your Name *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        className="input"
-                                        placeholder="John Doe"
-                                        required
-                                    />
+                            {!session && isNegotiating ? (
+                                <div className="text-center py-8">
+                                    <div className="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center mx-auto mb-4">
+                                        <Lock size={32} className="text-indigo-400" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-white mb-2">Login Required</h3>
+                                    <p className="text-slate-400 mb-6 px-4">
+                                        To negotiate a different time, you need to sign in or create an account.
+                                    </p>
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={() => signIn("google", { callbackUrl: window.location.href })}
+                                            className="btn btn-primary w-full flex items-center justify-center gap-2"
+                                        >
+                                            Sign in with Google
+                                        </button>
+                                        <Link href={`/login?callbackUrl=${encodeURIComponent(window.location.href)}`} className="btn btn-outline w-full block">
+                                            Sign in with Email
+                                        </Link>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsNegotiating(false)}
+                                        className="mt-6 text-sm text-slate-500 hover:text-slate-300"
+                                    >
+                                        Cancel Negotiation
+                                    </button>
                                 </div>
+                            ) : (
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    {/* Negotiation Toggle */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <Clock size={16} className="text-indigo-400" />
+                                            <span className="text-sm text-slate-300">Default Slot</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNegotiating(!isNegotiating)}
+                                            className="text-xs font-medium text-indigo-400 hover:text-white"
+                                        >
+                                            {isNegotiating ? "Switch to Standard Booking" : "Negotiate / Propose Change"}
+                                        </button>
+                                    </div>
 
-                                <div>
-                                    <label className="label flex items-center gap-2">
-                                        <Mail size={16} className="text-slate-400" />
-                                        Email *
-                                    </label>
-                                    <input
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        className="input"
-                                        placeholder="you@example.com"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="label flex items-center gap-2">
-                                        <Phone size={16} className="text-slate-400" />
-                                        Phone
-                                    </label>
-                                    <input
-                                        type="tel"
-                                        value={formData.phone}
-                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                        className="input"
-                                        placeholder="+1 (555) 000-0000"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="label flex items-center gap-2">
-                                        <FileText size={16} className="text-slate-400" />
-                                        Additional Notes
-                                    </label>
-                                    <textarea
-                                        value={formData.notes}
-                                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                        className="input resize-none"
-                                        rows={3}
-                                        placeholder="Anything you'd like us to know..."
-                                    />
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="btn btn-primary w-full py-3 text-lg mt-6"
-                                >
-                                    {submitting ? (
-                                        <span className="loading-spinner mx-auto" />
+                                    {session ? (
+                                        <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold">
+                                                    {session.user?.name?.[0].toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-white">Booking as {session.user?.name}</p>
+                                                    <p className="text-xs text-slate-400">{session.user?.email}</p>
+                                                </div>
+                                            </div>
+                                        </div>
                                     ) : (
-                                        "Confirm Booking"
+                                        <>
+                                            <div>
+                                                <label className="label flex items-center gap-2">
+                                                    <User size={16} className="text-slate-400" />
+                                                    Your Name *
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.name}
+                                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                                    className="input"
+                                                    placeholder="John Doe"
+                                                    required
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="label flex items-center gap-2">
+                                                    <Mail size={16} className="text-slate-400" />
+                                                    Email *
+                                                </label>
+                                                <input
+                                                    type="email"
+                                                    value={formData.email}
+                                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                    className="input"
+                                                    placeholder="you@example.com"
+                                                    required
+                                                />
+                                            </div>
+                                        </>
                                     )}
-                                </button>
-                            </form>
+
+                                    <div>
+                                        <label className="label flex items-center gap-2">
+                                            <Phone size={16} className="text-slate-400" />
+                                            Phone
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                            className="input"
+                                            placeholder="+1 (555) 000-0000"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="label flex items-center gap-2">
+                                            <FileText size={16} className="text-slate-400" />
+                                            {isNegotiating ? "Reason for Change / Proposed Time" : "Additional Notes"}
+                                        </label>
+                                        <textarea
+                                            value={formData.notes}
+                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                            className="input resize-none"
+                                            rows={3}
+                                            placeholder={isNegotiating ? "I'd prefer 10:30 if possible..." : "Anything you'd like us to know..."}
+                                            required={isNegotiating}
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="btn btn-primary w-full py-3 text-lg mt-6"
+                                    >
+                                        {submitting ? (
+                                            <span className="loading-spinner mx-auto" />
+                                        ) : isNegotiating ? (
+                                            "Submit Negotiation Request"
+                                        ) : (
+                                            "Confirm Booking"
+                                        )}
+                                    </button>
+                                </form>
+                            )}
                         </div>
                     )}
                 </div>

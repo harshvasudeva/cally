@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import Sidebar from "@/components/Sidebar"
 import CalendarView from "@/components/calendar/CalendarView"
 import EventModal from "@/components/calendar/EventModal"
+import OnboardingWizard from "@/components/OnboardingWizard"
 import { CalendarEvent, Event } from "@/types"
 import { Plus, Trash2 } from "lucide-react"
 
@@ -15,11 +16,35 @@ export default function CalendarPage() {
     const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
     const [selectedDates, setSelectedDates] = useState<{ start: Date; end: Date } | null>(null)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [showOnboarding, setShowOnboarding] = useState(false)
+
+    // (#83) Check if onboarding is needed
+    const onboardingCompleted = (session?.user as any)?.onboardingCompleted
 
     if (status === "loading") {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="loading-spinner" />
+            <div className="min-h-screen flex">
+                <Sidebar />
+                <main className="flex-1 p-6 md:p-8 overflow-auto">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="mb-8">
+                            <div className="h-8 w-48 bg-slate-700/50 rounded animate-pulse mb-2" />
+                            <div className="h-4 w-64 bg-slate-700/50 rounded animate-pulse" />
+                        </div>
+                        <div className="flex gap-2 mb-4">
+                            {[1, 2, 3, 4].map(i => (
+                                <div key={i} className="h-10 w-20 bg-slate-700/50 rounded animate-pulse" />
+                            ))}
+                        </div>
+                        <div className="card">
+                            <div className="grid grid-cols-7 gap-1">
+                                {Array.from({ length: 35 }).map((_, i) => (
+                                    <div key={i} className="h-24 bg-slate-700/30 rounded animate-pulse" />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </main>
             </div>
         )
     }
@@ -30,7 +55,6 @@ export default function CalendarPage() {
 
     const handleEventClick = async (event: CalendarEvent) => {
         if (event.extendedProps?.type === "event") {
-            // Fetch full event details
             try {
                 const res = await fetch(`/api/events/${event.id}`)
                 const data = await res.json()
@@ -51,21 +75,18 @@ export default function CalendarPage() {
     const handleSaveEvent = async (eventData: Partial<Event>) => {
         try {
             if (selectedEvent) {
-                // Update existing event
                 await fetch(`/api/events/${selectedEvent.id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(eventData)
                 })
             } else {
-                // Create new event
                 await fetch("/api/events", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(eventData)
                 })
             }
-            // Refresh the page to update calendar
             window.location.reload()
         } catch (error) {
             console.error("Error saving event:", error)
@@ -169,6 +190,11 @@ export default function CalendarPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* (#83) Onboarding Wizard */}
+            {onboardingCompleted === false && (
+                <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
             )}
         </div>
     )

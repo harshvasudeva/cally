@@ -9,19 +9,66 @@ datasource db {
 
 model User {
   id            String         @id @default(cuid())
-  email         String         @unique
-  password      String
-  name          String
+  email         String?        @unique
+  emailVerified DateTime?
+  password      String?
+  name          String?
   role          String         @default("USER")
   timezone      String         @default("UTC")
-  slug          String         @unique
+  slug          String?        @unique
   avatarUrl     String?
+  image         String?
+  discordId     String?        @unique
+
+  // Security: Account lockout (#11)
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
+
+  // Theme preference (#76)
+  theme         String         @default("dark")
+
+  accounts      Account[]
+  sessions      Session[]
+
   events        Event[]
   availability  Availability[]
-  appointments  Appointment[]
+  appointments  Appointment[]  @relation("Host")
+  guestAppointments Appointment[] @relation("Guest")
   appointmentTypes AppointmentType[]
+  dateOverrides DateOverride[]
+  auditLogs     AuditLog[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+
+  // Onboarding (#83)
+  onboardingCompleted Boolean  @default(false)
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Event {
@@ -39,6 +86,10 @@ model Event {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Performance indexes (#40)
+  @@index([userId])
+  @@index([start, end])
 }
 
 model Availability {
@@ -49,6 +100,8 @@ model Availability {
   isActive  Boolean @default(true)
   userId    String
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Appointment {
@@ -63,12 +116,22 @@ model Appointment {
   guestNotes      String?
   formData        String?
   meetingLink     String?
+  negotiationNote String?
+  originalTime    DateTime?
   userId          String
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User            @relation("Host", fields: [userId], references: [id], onDelete: Cascade)
+  guestUserId     String?
+  guestUser       User?           @relation("Guest", fields: [guestUserId], references: [id])
   appointmentTypeId String?
   appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+
+  // Performance indexes (#40)
+  @@index([userId])
+  @@index([guestEmail])
+  @@index([status])
+  @@index([start, end])
 }
 
 model AppointmentType {
@@ -83,6 +146,11 @@ model AppointmentType {
   location     String?
   formFields   String?
   isActive     Boolean       @default(true)
+
+  // Advanced scheduling (#63, #64)
+  minNotice    Int           @default(0)    // Minutes of advance notice required
+  maxPerDay    Int           @default(0)    // Max bookings per day (0 = unlimited)
+
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   appointments Appointment[]
@@ -90,6 +158,41 @@ model AppointmentType {
   updatedAt    DateTime      @updatedAt
 
   @@unique([userId, slug])
+  @@index([userId])
+}
+
+// Manual date overrides / blocking (#75)
+model DateOverride {
+  id        String   @id @default(cuid())
+  date      DateTime // The specific date
+  isBlocked Boolean  @default(true) // true = blocked, false = custom hours
+  startTime String?  // Custom start time (if not blocked)
+  endTime   String?  // Custom end time (if not blocked)
+  reason    String?  // Optional reason for the block
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+// Audit logging (#4)
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // e.g., "LOGIN", "SETTING_CHANGE", "APPOINTMENT_DELETE"
+  entity    String?  // e.g., "Appointment", "Settings", "User"
+  entityId  String?  // ID of the affected entity
+  details   String?  // JSON string with additional context
+  ipAddress String?
+  userAgent String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model Settings {
@@ -97,12 +200,27 @@ model Settings {
   siteName        String  @default("Cally")
   siteDescription String  @default("Self-hosted calendar and scheduling")
   primaryColor    String  @default("#3b82f6")
+
+  // Email (SMTP)
   emailFrom       String?
   smtpHost        String?
   smtpPort        Int?
   smtpUser        String?
   smtpPass        String?
+
+  // Discord Bot
+  discordBotToken String?
+  discordClientId String?
+
   allowRegistration Boolean @default(true)
+
+  // Security (#11)
+  maxLoginAttempts  Int     @default(5)
+  lockoutDuration   Int     @default(15) // minutes
+
+  // Maintenance mode (#26)
+  maintenanceMode   Boolean @default(false)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

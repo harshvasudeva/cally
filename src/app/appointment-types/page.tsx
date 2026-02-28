@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 import Sidebar from "@/components/Sidebar"
 import { AppointmentType } from "@/types"
-import { Clock, Plus, Edit2, Trash2, Link2, X } from "lucide-react"
+import { Clock, Plus, Edit2, Trash2, Link2, X, AlertCircle, Hash } from "lucide-react"
 
 const colors = [
     "#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899"
@@ -25,7 +25,9 @@ export default function AppointmentTypesPage() {
         bufferAfter: 0,
         description: "",
         location: "",
-        color: "#8b5cf6"
+        color: "#8b5cf6",
+        minNotice: 0,
+        maxPerDay: 0
     })
 
     useEffect(() => {
@@ -81,7 +83,9 @@ export default function AppointmentTypesPage() {
             bufferAfter: 0,
             description: "",
             location: "",
-            color: "#8b5cf6"
+            color: "#8b5cf6",
+            minNotice: 0,
+            maxPerDay: 0
         })
     }
 
@@ -94,7 +98,9 @@ export default function AppointmentTypesPage() {
             bufferAfter: type.bufferAfter,
             description: type.description || "",
             location: type.location || "",
-            color: type.color
+            color: type.color,
+            minNotice: (type as AppointmentType & { minNotice?: number }).minNotice || 0,
+            maxPerDay: (type as AppointmentType & { maxPerDay?: number }).maxPerDay || 0
         })
         setShowModal(true)
     }
@@ -153,50 +159,67 @@ export default function AppointmentTypesPage() {
                         </div>
                     ) : (
                         <div className="grid gap-4">
-                            {types.map((type) => (
-                                <div key={type.id} className="card card-hover flex items-center gap-4">
-                                    <div
-                                        className="w-2 h-16 rounded-full"
-                                        style={{ backgroundColor: type.color }}
-                                    />
+                            {types.map((type) => {
+                                const minNotice = (type as AppointmentType & { minNotice?: number }).minNotice || 0
+                                const maxPerDay = (type as AppointmentType & { maxPerDay?: number }).maxPerDay || 0
 
-                                    <div className="flex-1">
-                                        <h3 className="text-lg font-semibold text-white">{type.name}</h3>
-                                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-400">
-                                            <span className="flex items-center gap-1">
-                                                <Clock size={14} />
-                                                {type.duration} min
-                                            </span>
-                                            {(type.bufferBefore > 0 || type.bufferAfter > 0) && (
-                                                <span>
-                                                    Buffer: {type.bufferBefore}min before, {type.bufferAfter}min after
+                                return (
+                                    <div key={type.id} className="card card-hover flex items-center gap-4">
+                                        <div
+                                            className="w-2 h-16 rounded-full"
+                                            style={{ backgroundColor: type.color }}
+                                        />
+
+                                        <div className="flex-1">
+                                            <h3 className="text-lg font-semibold text-white">{type.name}</h3>
+                                            <div className="flex items-center gap-4 mt-1 text-sm text-slate-400 flex-wrap">
+                                                <span className="flex items-center gap-1">
+                                                    <Clock size={14} />
+                                                    {type.duration} min
                                                 </span>
+                                                {(type.bufferBefore > 0 || type.bufferAfter > 0) && (
+                                                    <span>
+                                                        Buffer: {type.bufferBefore}min before, {type.bufferAfter}min after
+                                                    </span>
+                                                )}
+                                                {minNotice > 0 && (
+                                                    <span className="flex items-center gap-1">
+                                                        <AlertCircle size={14} />
+                                                        {minNotice}min notice
+                                                    </span>
+                                                )}
+                                                {maxPerDay > 0 && (
+                                                    <span className="flex items-center gap-1">
+                                                        <Hash size={14} />
+                                                        Max {maxPerDay}/day
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {type.description && (
+                                                <p className="text-sm text-slate-500 mt-2">{type.description}</p>
                                             )}
                                         </div>
-                                        {type.description && (
-                                            <p className="text-sm text-slate-500 mt-2">{type.description}</p>
-                                        )}
-                                    </div>
 
-                                    {/* Booking Link */}
-                                    <div className="hidden md:block text-sm">
-                                        <p className="text-slate-500 mb-1">Booking Link</p>
-                                        <code className="text-xs text-indigo-400 bg-slate-800 px-2 py-1 rounded">
-                                            /book/{userSlug}?type={type.slug}
-                                        </code>
-                                    </div>
+                                        {/* Booking Link */}
+                                        <div className="hidden md:block text-sm">
+                                            <p className="text-slate-500 mb-1">Booking Link</p>
+                                            <code className="text-xs text-indigo-400 bg-slate-800 px-2 py-1 rounded">
+                                                /book/{userSlug}?type={type.slug}
+                                            </code>
+                                        </div>
 
-                                    {/* Actions */}
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => openEdit(type)}
-                                            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700"
-                                        >
-                                            <Edit2 size={18} />
-                                        </button>
+                                        {/* Actions */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => openEdit(type)}
+                                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700"
+                                            >
+                                                <Edit2 size={18} />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </div>
                     )}
                 </div>
@@ -206,7 +229,7 @@ export default function AppointmentTypesPage() {
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-                    <div className="relative w-full max-w-lg glass rounded-2xl animate-fade-in">
+                    <div className="relative w-full max-w-lg glass rounded-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between p-6 border-b border-slate-700">
                             <h2 className="text-xl font-semibold text-white">
                                 {editingType ? "Edit Event Type" : "New Event Type"}
@@ -266,6 +289,33 @@ export default function AppointmentTypesPage() {
                                         min={0}
                                         step={5}
                                     />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label">Minimum Notice (minutes)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.minNotice}
+                                        onChange={(e) => setFormData({ ...formData, minNotice: parseInt(e.target.value) || 0 })}
+                                        className="input"
+                                        min={0}
+                                        step={15}
+                                        placeholder="0"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label">Max Bookings per Day</label>
+                                    <input
+                                        type="number"
+                                        value={formData.maxPerDay}
+                                        onChange={(e) => setFormData({ ...formData, maxPerDay: parseInt(e.target.value) || 0 })}
+                                        className="input"
+                                        min={0}
+                                        placeholder="0"
+                                    />
+                                    <p className="text-xs text-slate-500 mt-1">0 = unlimited</p>
                                 </div>
                             </div>
 

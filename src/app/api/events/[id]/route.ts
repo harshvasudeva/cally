@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { sanitizeEventInput } from "@/lib/sanitize"
+import { createAuditLog } from "@/lib/audit"
 
 // GET single event
 export async function GET(
@@ -48,7 +50,14 @@ export async function PUT(
         const { id } = await params
         const userId = (session.user as { id: string }).id
         const body = await request.json()
-        const { title, description, start, end, allDay, color, category, location, recurrence } = body
+        const { start, end, allDay, color, category, recurrence } = body
+
+        // (#16) Sanitize inputs
+        const sanitized = sanitizeEventInput({
+            title: body.title,
+            description: body.description,
+            location: body.location,
+        })
 
         const existingEvent = await prisma.event.findFirst({
             where: { id, userId }
@@ -61,16 +70,25 @@ export async function PUT(
         const event = await prisma.event.update({
             where: { id },
             data: {
-                title,
-                description,
+                title: sanitized.title || undefined,
+                description: sanitized.description || undefined,
                 start: start ? new Date(start) : undefined,
                 end: end ? new Date(end) : undefined,
                 allDay,
                 color,
                 category,
-                location,
+                location: sanitized.location || undefined,
                 recurrence
             }
+        })
+
+        // (#4) Audit log
+        await createAuditLog({
+            action: "EVENT_UPDATE",
+            entity: "Event",
+            entityId: id,
+            details: { title: event.title },
+            userId,
         })
 
         return NextResponse.json(event)
@@ -105,6 +123,15 @@ export async function DELETE(
 
         await prisma.event.delete({
             where: { id }
+        })
+
+        // (#4) Audit log
+        await createAuditLog({
+            action: "EVENT_DELETE",
+            entity: "Event",
+            entityId: id,
+            details: { title: existingEvent.title },
+            userId,
         })
 
         return NextResponse.json({ message: "Event deleted" })

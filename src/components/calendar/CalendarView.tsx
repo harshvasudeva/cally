@@ -71,21 +71,7 @@ export default function CalendarView({
         fetchEvents()
     }, [fetchEvents])
 
-    const handleEventClick = (info: {
-        event: {
-            id: string
-            title: string
-            start: Date | null
-            end: Date | null
-            allDay: boolean
-            backgroundColor: string
-            extendedProps: {
-                type: "event" | "appointment"
-                description?: string
-                status?: string
-            }
-        }
-    }) => {
+    const handleEventClick = (info: any) => {
         if (onEventClick) {
             onEventClick({
                 id: info.event.id,
@@ -99,16 +85,13 @@ export default function CalendarView({
         }
     }
 
-    const handleDateSelect = (info: { start: Date; end: Date }) => {
+    const handleDateSelect = (info: any) => {
         if (onDateSelect) {
             onDateSelect(info.start, info.end)
         }
     }
 
-    const handleEventDrop = async (info: {
-        event: { id: string; start: Date | null; end: Date | null; extendedProps: { type: string } }
-        revert: () => void
-    }) => {
+    const handleEventDrop = async (info: any) => {
         if (info.event.extendedProps.type !== "event") {
             info.revert()
             return

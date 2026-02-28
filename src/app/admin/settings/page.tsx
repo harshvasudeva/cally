@@ -4,25 +4,25 @@ import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 import Sidebar from "@/components/Sidebar"
-import { Settings, Save, Mail, Check } from "lucide-react"
+import { Settings, Save, Mail, Check, Shield, AlertTriangle } from "lucide-react"
 
 interface SiteSettings {
     siteName: string
     siteDescription: string
     primaryColor: string
-    allowRegistration: boolean
     emailFrom: string
     smtpHost: string
     smtpPort: number
     smtpUser: string
     smtpPass: string
+    maintenanceMode: boolean
 }
 
 export default function SettingsPage() {
     const { data: session, status } = useSession()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
-    const [saved, setSaved] = useState(false)
+    const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
     const [settings, setSettings] = useState<SiteSettings>({
         siteName: "Cally",
         siteDescription: "Self-hosted calendar and scheduling",
@@ -32,29 +32,78 @@ export default function SettingsPage() {
         smtpHost: "",
         smtpPort: 587,
         smtpUser: "",
-        smtpPass: ""
+        smtpPass: "",
+        maxLoginAttempts: 5,
+        lockoutDuration: 15,
+        maintenanceMode: false
     })
 
     useEffect(() => {
-        // For now, use default settings since we don't have a settings API yet
-        setLoading(false)
+        fetchSettings()
     }, [])
+
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch("/api/admin/settings")
+            if (res.ok) {
+                const data = await res.json()
+                setSettings((prev) => ({ ...prev, ...data }))
+            }
+        } catch (error) {
+            console.error("Error fetching settings:", error)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const handleSave = async () => {
         setSaving(true)
-        // TODO: Implement settings API
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        setSaving(false)
-        setSaved(true)
-        setTimeout(() => setSaved(false), 3000)
+        setFeedback(null)
+
+        try {
+            const res = await fetch("/api/admin/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(settings)
+            })
+
+            if (res.ok) {
+                setFeedback({ type: "success", message: "Settings saved successfully." })
+            } else {
+                const data = await res.json()
+                setFeedback({ type: "error", message: data.error || "Failed to save settings." })
+            }
+        } catch (error) {
+            setFeedback({ type: "error", message: "An error occurred while saving settings." })
+        } finally {
+            setSaving(false)
+            setTimeout(() => setFeedback(null), 5000)
+        }
     }
 
     const isAdmin = (session?.user as { role?: string })?.role === "ADMIN"
 
     if (status === "loading" || loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="loading-spinner" />
+            <div className="min-h-screen flex">
+                <Sidebar />
+                <main className="flex-1 p-6 md:p-8 overflow-auto">
+                    <div className="max-w-3xl mx-auto">
+                        <div className="h-10 w-48 bg-slate-700 rounded animate-pulse mb-2" />
+                        <div className="h-5 w-72 bg-slate-800 rounded animate-pulse mb-8" />
+                        <div className="space-y-6">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="card animate-pulse">
+                                    <div className="h-6 w-32 bg-slate-700 rounded mb-4" />
+                                    <div className="space-y-3">
+                                        <div className="h-10 bg-slate-800 rounded" />
+                                        <div className="h-10 bg-slate-800 rounded" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </main>
             </div>
         )
     }
@@ -90,11 +139,6 @@ export default function SettingsPage() {
                         >
                             {saving ? (
                                 <span className="loading-spinner" />
-                            ) : saved ? (
-                                <>
-                                    <Check size={18} className="text-emerald-400" />
-                                    Saved!
-                                </>
                             ) : (
                                 <>
                                     <Save size={18} />
@@ -103,6 +147,18 @@ export default function SettingsPage() {
                             )}
                         </button>
                     </div>
+
+                    {/* Feedback */}
+                    {feedback && (
+                        <div className={`mb-6 p-4 rounded-lg border text-sm flex items-center gap-2 ${
+                            feedback.type === "success"
+                                ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+                                : "bg-red-500/20 border-red-500/30 text-red-400"
+                        }`}>
+                            {feedback.type === "success" ? <Check size={18} /> : <AlertTriangle size={18} />}
+                            {feedback.message}
+                        </div>
+                    )}
 
                     {/* General Settings */}
                     <div className="card mb-6">
@@ -144,8 +200,71 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
+                    {/* Security Settings */}
+                    <div className="card mb-6">
+                        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <Shield className="text-indigo-400" size={20} />
+                            Security
+                        </h2>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="label">Max Login Attempts</label>
+                                    <input
+                                        type="number"
+                                        value={settings.maxLoginAttempts}
+                                        onChange={(e) => setSettings({ ...settings, maxLoginAttempts: parseInt(e.target.value) || 0 })}
+                                        className="input"
+                                        min={1}
+                                        max={20}
+                                    />
+                                    <p className="text-xs text-slate-500 mt-1">Lock account after this many failed attempts</p>
+                                </div>
+                                <div>
+                                    <label className="label">Lockout Duration (minutes)</label>
+                                    <input
+                                        type="number"
+                                        value={settings.lockoutDuration}
+                                        onChange={(e) => setSettings({ ...settings, lockoutDuration: parseInt(e.target.value) || 0 })}
+                                        className="input"
+                                        min={1}
+                                        max={1440}
+                                    />
+                                    <p className="text-xs text-slate-500 mt-1">How long to lock the account</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Maintenance Mode */}
+                    <div className="card mb-6">
+                        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <AlertTriangle className="text-amber-400" size={20} />
+                            Maintenance
+                        </h2>
+
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="maintenanceMode"
+                                checked={settings.maintenanceMode}
+                                onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })}
+                                className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500"
+                            />
+                            <div>
+                                <label htmlFor="maintenanceMode" className="text-slate-300 font-medium">
+                                    Enable Maintenance Mode
+                                </label>
+                                <p className="text-xs text-slate-500">
+                                    When enabled, the site will show a maintenance page to non-admin users.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Email Settings */}
-                    <div className="card">
+                    <div className="card mb-6">
                         <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Mail className="text-indigo-400" />
                             Email Configuration (SMTP)

@@ -1,163 +1,166 @@
 import { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
+import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import GoogleProvider from "next-auth/providers/google"
-import bcrypt from "bcryptjs"
+import DiscordProvider from "next-auth/providers/discord"
+import TwitterProvider from "next-auth/providers/twitter"
+import FacebookProvider from "next-auth/providers/facebook"
+import AppleProvider from "next-auth/providers/apple"
 import prisma from "./prisma"
+import { env } from "./env"
 
 export const authOptions: NextAuthOptions = {
+    adapter: PrismaAdapter(prisma),
     providers: [
-        GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID || "",
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-        }),
-        CredentialsProvider({
-            name: "credentials",
-            credentials: {
-                email: { label: "Email", type: "email" },
-                password: { label: "Password", type: "password" }
-            },
-            async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) {
-                    throw new Error("Invalid credentials")
-                }
-
-                const user = await prisma.user.findUnique({
-                    where: { email: credentials.email }
-                })
-
-                if (!user) {
-                    throw new Error("User not found")
-                }
-
-                const isValid = await bcrypt.compare(credentials.password, user.password)
-
-                if (!isValid) {
-                    throw new Error("Invalid password")
-                }
-
-                return {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    role: user.role,
-                    slug: user.slug,
-                    timezone: user.timezone
-                }
-            }
-        })
+        // Only register providers whose credentials are configured
+        ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+            ? [
+                  GoogleProvider({
+                      clientId: env.GOOGLE_CLIENT_ID,
+                      clientSecret: env.GOOGLE_CLIENT_SECRET,
+                  }),
+              ]
+            : []),
+        ...(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET
+            ? [
+                  DiscordProvider({
+                      clientId: env.DISCORD_CLIENT_ID,
+                      clientSecret: env.DISCORD_CLIENT_SECRET,
+                  }),
+              ]
+            : []),
+        ...(env.TWITTER_CLIENT_ID && env.TWITTER_CLIENT_SECRET
+            ? [
+                  TwitterProvider({
+                      clientId: env.TWITTER_CLIENT_ID,
+                      clientSecret: env.TWITTER_CLIENT_SECRET,
+                      version: "2.0",
+                  }),
+              ]
+            : []),
+        ...(env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET
+            ? [
+                  FacebookProvider({
+                      clientId: env.FACEBOOK_CLIENT_ID,
+                      clientSecret: env.FACEBOOK_CLIENT_SECRET,
+                  }),
+              ]
+            : []),
+        ...(env.APPLE_ID && env.APPLE_SECRET
+            ? [
+                  AppleProvider({
+                      clientId: env.APPLE_ID,
+                      clientSecret: env.APPLE_SECRET,
+                  }),
+              ]
+            : []),
     ],
+    session: {
+        strategy: "jwt",
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+    },
+    cookies: {
+        sessionToken: {
+            name: "__Secure-next-auth.session-token",
+            options: {
+                httpOnly: true,
+                sameSite: "lax",
+                path: "/",
+                secure: env.NODE_ENV === "production",
+            },
+        },
+    },
     callbacks: {
-        async signIn({ user, account }) {
-            // Handle Google OAuth sign in
-            if (account?.provider === "google") {
-                try {
-                    const existingUser = await prisma.user.findUnique({
-                        where: { email: user.email! }
-                    })
+        async session({ session, token }) {
+            if (session.user && token.sub) {
+                session.user.id = token.sub
+            }
+            // Use cached data from JWT token instead of querying DB on every request
+            if (token) {
+                (session.user as any).role = token.role;
+                (session.user as any).slug = token.slug;
+                (session.user as any).timezone = token.timezone;
+                (session.user as any).theme = token.theme;
+                (session.user as any).onboardingCompleted = token.onboardingCompleted;
+            }
+            return session
+        },
+        async jwt({ token, user, trigger }) {
+            // Initial sign in - populate token with user data
+            if (user) {
+                const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+                if (dbUser) {
+                    token.role = dbUser.role;
+                    token.slug = dbUser.slug;
+                    token.timezone = dbUser.timezone;
+                    token.theme = dbUser.theme;
+                    token.onboardingCompleted = dbUser.onboardingCompleted;
 
-                    if (!existingUser) {
-                        // Create new user from Google account
+                    // Generate slug if missing (first OAuth login via Adapter)
+                    if (!dbUser.slug) {
                         const baseSlug = (user.name || "user").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
                         let slug = baseSlug
                         let counter = 1
-
                         while (await prisma.user.findUnique({ where: { slug } })) {
                             slug = `${baseSlug}-${counter}`
                             counter++
                         }
+                        // First user becomes admin
+                        const count = await prisma.user.count();
+                        const role = count === 1 ? "ADMIN" : "USER";
 
-                        // Check if this is the first user (make them admin)
-                        const userCount = await prisma.user.count()
-                        const role = userCount === 0 ? "ADMIN" : "USER"
-
-                        const newUser = await prisma.user.create({
+                        await prisma.user.update({
+                            where: { id: user.id },
                             data: {
-                                email: user.email!,
-                                password: "", // No password for OAuth users
-                                name: user.name || "User",
                                 slug,
-                                role,
-                                timezone: "UTC",
-                                avatarUrl: user.image
+                                role: dbUser.role === "USER" ? role : dbUser.role,
                             }
-                        })
+                        });
 
-                        // Create default availability (Mon-Fri 9am-5pm)
-                        const defaultAvailability = [1, 2, 3, 4, 5].map((day) => ({
-                            dayOfWeek: day,
-                            startTime: "09:00",
-                            endTime: "17:00",
-                            userId: newUser.id
-                        }))
+                        token.slug = slug;
+                        token.role = dbUser.role === "USER" ? role : dbUser.role;
 
-                        await prisma.availability.createMany({
-                            data: defaultAvailability
-                        })
-
-                        // Create default appointment type
-                        await prisma.appointmentType.create({
-                            data: {
-                                name: "30 Minute Meeting",
-                                slug: "30min",
-                                duration: 30,
-                                color: "#3b82f6",
-                                description: "A 30 minute meeting",
-                                userId: newUser.id
-                            }
-                        })
-
-                        // Create settings if first user
-                        if (userCount === 0) {
-                            await prisma.settings.create({
-                                data: {}
-                            })
+                        // Initialize Availability/Types if missing
+                        const types = await prisma.appointmentType.count({ where: { userId: user.id } });
+                        if (types === 0) {
+                            await prisma.appointmentType.create({
+                                data: {
+                                    name: "30 Minute Meeting",
+                                    slug: "30min",
+                                    duration: 30,
+                                    userId: user.id
+                                }
+                            });
+                            await prisma.availability.createMany({
+                                data: [1, 2, 3, 4, 5].map(d => ({
+                                    userId: user.id,
+                                    dayOfWeek: d,
+                                    startTime: "09:00",
+                                    endTime: "17:00"
+                                }))
+                            });
                         }
                     }
-                    return true
-                } catch (error) {
-                    console.error("Error during Google sign in:", error)
-                    return false
                 }
             }
-            return true
-        },
-        async jwt({ token, user, account }) {
-            if (account?.provider === "google" && user?.email) {
-                // Fetch user from database for Google sign in
-                const dbUser = await prisma.user.findUnique({
-                    where: { email: user.email }
-                })
-                if (dbUser) {
-                    token.id = dbUser.id
-                    token.role = dbUser.role
-                    token.slug = dbUser.slug
-                    token.timezone = dbUser.timezone
+
+            // Refresh token data when session is updated (e.g. profile changes)
+            if (trigger === "update" && token.sub) {
+                const freshUser = await prisma.user.findUnique({ where: { id: token.sub } });
+                if (freshUser) {
+                    token.role = freshUser.role;
+                    token.slug = freshUser.slug;
+                    token.timezone = freshUser.timezone;
+                    token.theme = freshUser.theme;
+                    token.onboardingCompleted = freshUser.onboardingCompleted;
                 }
-            } else if (user) {
-                token.id = user.id
-                token.role = (user as { role: string }).role
-                token.slug = (user as { slug: string }).slug
-                token.timezone = (user as { timezone: string }).timezone
             }
+
             return token
-        },
-        async session({ session, token }) {
-            if (session.user) {
-                (session.user as { id: string }).id = token.id as string
-                (session.user as { role: string }).role = token.role as string
-                (session.user as { slug: string }).slug = token.slug as string
-                (session.user as { timezone: string }).timezone = token.timezone as string
-            }
-            return session
         }
     },
     pages: {
         signIn: "/login",
         error: "/login"
     },
-    session: {
-        strategy: "jwt",
-        maxAge: 30 * 24 * 60 * 60 // 30 days
-    },
-    secret: process.env.NEXTAUTH_SECRET
+    secret: env.NEXTAUTH_SECRET,
 }

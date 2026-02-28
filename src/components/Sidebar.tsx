@@ -15,19 +15,25 @@ import {
     X,
     CalendarCheck,
     Download,
-    Upload
+    Upload,
+    Shield,
+    Command,
+    CalendarOff
 } from "lucide-react"
+import ThemeToggle from "./ThemeToggle"
 
 const navItems = [
     { href: "/calendar", label: "Calendar", icon: Calendar },
     { href: "/appointments", label: "Appointments", icon: CalendarCheck },
     { href: "/availability", label: "Availability", icon: Clock },
     { href: "/appointment-types", label: "Event Types", icon: LayoutDashboard },
+    { href: "/date-overrides", label: "Date Blocks", icon: CalendarOff },
 ]
 
 const adminItems = [
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/settings", label: "Settings", icon: Settings },
+    { href: "/admin/audit", label: "Audit Log", icon: Shield },
 ]
 
 export default function Sidebar() {
@@ -44,6 +50,7 @@ export default function Sidebar() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-slate-800 text-white"
+                aria-label="Toggle menu"
             >
                 {isOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -59,11 +66,13 @@ export default function Sidebar() {
             {/* Sidebar */}
             <aside
                 className={`
-          fixed md:static inset-y-0 left-0 z-50 w-64 
+          fixed md:static inset-y-0 left-0 z-50 w-64
           bg-slate-900 border-r border-slate-700
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}
+                role="navigation"
+                aria-label="Main navigation"
             >
                 <div className="flex flex-col h-full">
                     {/* Logo */}
@@ -77,7 +86,7 @@ export default function Sidebar() {
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex-1 p-4 space-y-1">
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                         {navItems.map((item) => {
                             const Icon = item.icon
                             const isActive = pathname === item.href
@@ -94,6 +103,7 @@ export default function Sidebar() {
                                             : "text-slate-400 hover:text-white hover:bg-slate-800"
                                         }
                   `}
+                                    aria-current={isActive ? "page" : undefined}
                                 >
                                     <Icon size={20} />
                                     <span className="font-medium">{item.label}</span>
@@ -145,6 +155,7 @@ export default function Sidebar() {
                                                     : "text-slate-400 hover:text-white hover:bg-slate-800"
                                                 }
                       `}
+                                            aria-current={isActive ? "page" : undefined}
                                         >
                                             <Icon size={20} />
                                             <span className="font-medium">{item.label}</span>
@@ -153,6 +164,14 @@ export default function Sidebar() {
                                 })}
                             </div>
                         )}
+
+                        {/* (#89) Keyboard shortcut hint */}
+                        <div className="pt-4 mt-4 border-t border-slate-700">
+                            <div className="px-4 py-2 flex items-center gap-2 text-xs text-slate-500">
+                                <Command size={12} />
+                                <span>Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Ctrl+K</kbd> to search</span>
+                            </div>
+                        </div>
                     </nav>
 
                     {/* Booking Link */}
@@ -172,23 +191,27 @@ export default function Sidebar() {
                     {/* User Section */}
                     <div className="p-4 border-t border-slate-700">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                                <span className="text-white font-semibold">
-                                    {session?.user?.name?.charAt(0).toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-white truncate">
-                                    {session?.user?.name}
-                                </p>
-                                <p className="text-xs text-slate-400 truncate">
-                                    {session?.user?.email}
-                                </p>
-                            </div>
+                            <Link href="/settings/profile" className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity group">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                                    <span className="text-white font-semibold">
+                                        {session?.user?.name?.charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white truncate group-hover:text-indigo-400">
+                                        {session?.user?.name}
+                                    </p>
+                                    <p className="text-xs text-slate-400 truncate">
+                                        {session?.user?.email}
+                                    </p>
+                                </div>
+                            </Link>
+                            <ThemeToggle />
                             <button
                                 onClick={() => signOut({ callbackUrl: "/login" })}
                                 className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
                                 title="Sign out"
+                                aria-label="Sign out"
                             >
                                 <LogOut size={18} />
                             </button>
