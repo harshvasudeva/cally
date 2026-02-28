@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 // Security headers proxy (#9) - Migrated from deprecated middleware.ts to proxy.ts (Next.js 16)
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const response = NextResponse.next()
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64")
 
