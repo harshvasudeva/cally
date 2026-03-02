@@ -128,8 +128,9 @@ export interface CalendarEvent {
     end: Date | string
     allDay?: boolean
     color?: string
+    display?: string
     extendedProps?: {
-        type: "event" | "appointment"
+        type: "event" | "appointment" | "date-override"
         description?: string
         status?: string
     }

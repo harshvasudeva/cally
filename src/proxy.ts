@@ -47,10 +47,10 @@ export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64")
 
   // Content Security Policy
-  // In dev: allow unsafe-eval (required by Turbopack/React Server Components)
+  // In dev: allow unsafe-eval + unsafe-inline (required by Turbopack/React Server Components + Next.js inline scripts)
   // In prod: use nonce-based inline scripts only (no eval)
   const scriptSrc = isDev
-    ? `script-src 'self' 'unsafe-eval' 'nonce-${nonce}'`
+    ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'`
     : `script-src 'self' 'nonce-${nonce}'`
 
   const cspDirectives = [

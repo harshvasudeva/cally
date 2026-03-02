@@ -92,3 +92,6 @@ implementationplan.md
 
 # Utility scripts
 check_users.ts
+
+# Playwright MCP
+.playwright-mcp/

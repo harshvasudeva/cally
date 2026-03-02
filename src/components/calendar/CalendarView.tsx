@@ -30,13 +30,15 @@ export default function CalendarView({
 
     const fetchEvents = useCallback(async () => {
         try {
-            const [eventsRes, appointmentsRes] = await Promise.all([
+            const [eventsRes, appointmentsRes, overridesRes] = await Promise.all([
                 fetch("/api/events"),
-                fetch("/api/appointments")
+                fetch("/api/appointments"),
+                fetch("/api/date-overrides")
             ])
 
             const eventsData: Event[] = await eventsRes.json()
             const appointmentsData: Appointment[] = await appointmentsRes.json()
+            const overridesData: { id: string; date: string; isBlocked: boolean; reason?: string | null; startTime?: string | null; endTime?: string | null }[] = overridesRes.ok ? await overridesRes.json() : []
 
             const calendarEvents: CalendarEvent[] = [
                 ...eventsData.map((e) => ({
@@ -61,6 +63,21 @@ export default function CalendarView({
                         type: "appointment" as const,
                         status: a.status
                     }
+                })),
+                ...overridesData.map((o) => ({
+                    id: `override-${o.id}`,
+                    title: o.isBlocked
+                        ? `\uD83D\uDEAB ${o.reason || "Blocked"}`
+                        : `\u23F0 ${o.reason || "Custom Hours"}${o.startTime && o.endTime ? ` (${o.startTime}–${o.endTime})` : ""}`,
+                    start: o.date.split("T")[0],
+                    end: o.date.split("T")[0],
+                    allDay: true,
+                    color: o.isBlocked ? "#ef4444" : "#f59e0b",
+                    display: "block",
+                    extendedProps: {
+                        type: "date-override" as const,
+                        description: o.reason || undefined
+                    }
                 }))
             ]
 
@@ -77,6 +94,9 @@ export default function CalendarView({
     }, [fetchEvents, refreshKey])
 
     const handleEventClick = useCallback((info: any) => {
+        // Don't open edit modal for date overrides / holidays
+        if (info.event.extendedProps?.type === "date-override") return
+
         if (onEventClick) {
             onEventClick({
                 id: info.event.id,

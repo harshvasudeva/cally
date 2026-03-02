@@ -57,7 +57,21 @@ async function fetchFromCalendarific(
     const data: CalendarificResponse = await res.json()
     if (data.meta.code !== 200 || !data.response?.holidays) return null
 
-    return data.response.holidays.map(h => ({
+    // Filter to only national/public holidays (exclude observances, seasons, etc.)
+    const nationalHolidays = data.response.holidays.filter(h => {
+      const types = h.type.map(t => t.toLowerCase())
+      return types.includes('national holiday') ||
+             types.includes('public holiday') ||
+             types.includes('gazetted holiday') ||
+             types.includes('restricted holiday') ||
+             types.includes('national') ||
+             types.includes('public')
+    })
+
+    // If filtering produces nothing (some countries label differently), fall back to all
+    const holidays = nationalHolidays.length > 0 ? nationalHolidays : data.response.holidays
+
+    return holidays.map(h => ({
       date: h.date.iso.split("T")[0], // Ensure YYYY-MM-DD format
       name: h.name,
       localName: h.name, // Calendarific doesn't distinguish local/english names
@@ -147,12 +161,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // De-duplicate by date+name (in case both providers return similar data)
+    // De-duplicate by date (keep first entry per date to avoid unique constraint issues on import)
     const seen = new Set<string>()
     const unique = holidays.filter(h => {
-      const key = `${h.date}|${h.name}`
-      if (seen.has(key)) return false
-      seen.add(key)
+      if (seen.has(h.date)) return false
+      seen.add(h.date)
       return true
     })
 

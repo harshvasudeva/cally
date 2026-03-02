@@ -48,6 +48,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if override already exists for this date
+    const existing = await prisma.dateOverride.findFirst({
+      where: { userId, date: parsedDate },
+    })
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "A date override already exists for this date" },
+        { status: 409 }
+      )
+    }
+
     const override = await prisma.dateOverride.create({
       data: {
         date: parsedDate,
@@ -72,18 +84,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(override, { status: 201 })
   } catch (error) {
     console.error("Error creating date override:", error)
-
-    // Handle unique constraint violation (duplicate date for same user)
-    if (
-      error instanceof Error &&
-      error.message.includes("Unique constraint")
-    ) {
-      return NextResponse.json(
-        { error: "A date override already exists for this date" },
-        { status: 409 }
-      )
-    }
-
     return NextResponse.json({ error: "Failed to create date override" }, { status: 500 })
   }
 }

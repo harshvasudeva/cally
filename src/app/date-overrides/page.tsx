@@ -164,7 +164,16 @@ export default function DateOverridesPage() {
 
         const selectedList = holidays.filter(h => selectedHolidays.has(h.date))
 
+        // Get existing override dates to skip duplicates client-side (avoids 409 console errors)
+        const existingDates = new Set(overrides.map(o => o.date.split("T")[0]))
+
         for (const holiday of selectedList) {
+            // Skip if already exists — no need to hit the API
+            if (existingDates.has(holiday.date)) {
+                skipped++
+                continue
+            }
+
             try {
                 const res = await fetch("/api/date-overrides", {
                     method: "POST",
@@ -177,8 +186,7 @@ export default function DateOverridesPage() {
                 })
                 if (res.ok) {
                     imported++
-                } else if (res.status === 409) {
-                    skipped++ // Already exists
+                    existingDates.add(holiday.date) // Track newly created ones too
                 } else {
                     skipped++
                 }
@@ -190,7 +198,7 @@ export default function DateOverridesPage() {
         setImportResult({ imported, skipped })
         fetchOverrides()
         setSaving(false)
-    }, [selectedHolidays, holidays, fetchOverrides])
+    }, [selectedHolidays, holidays, overrides, fetchOverrides])
 
     const toggleHoliday = (date: string) => {
         setSelectedHolidays(prev => {
