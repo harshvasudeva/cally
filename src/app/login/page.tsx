@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { signIn, getProviders } from "next-auth/react"
-import { Calendar } from "lucide-react"
-import { useEffect } from "react"
+import { useState, useEffect } from "react"
+import { signIn, getProviders, useSession } from "next-auth/react"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
+import { Calendar, Eye, EyeOff, Mail, Lock } from "lucide-react"
 
 interface OAuthProvider {
     id: string
@@ -42,26 +43,80 @@ const PROVIDER_ICONS: Record<string, React.ReactNode> = {
 }
 
 export default function LoginPage() {
+    const { status } = useSession()
+    const router = useRouter()
+    const searchParams = useSearchParams()
     const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
     const [error, setError] = useState("")
     const [providers, setProviders] = useState<OAuthProvider[]>([])
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [showPassword, setShowPassword] = useState(false)
+    const [credentialLoading, setCredentialLoading] = useState(false)
+
+    const registered = searchParams.get("registered")
+    const authError = searchParams.get("error")
+    useEffect(() => {
+        if (status === "authenticated") {
+            router.replace("/dashboard")
+        }
+    }, [status, router])
+
+    useEffect(() => {
+        if (authError) {
+            setError(decodeURIComponent(authError))
+        }
+    }, [authError])
 
     useEffect(() => {
         getProviders().then((p) => {
             if (p) {
-                setProviders(Object.values(p))
+                // Filter out credentials provider from OAuth list
+                setProviders(Object.values(p).filter((prov) => prov.id !== "credentials"))
             }
         })
     }, [])
+
+    if (status === "loading" || status === "authenticated") {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="loading-spinner" />
+            </div>
+        )
+    }
 
     const handleSignIn = async (providerId: string) => {
         setLoadingProvider(providerId)
         setError("")
         try {
-            await signIn(providerId, { callbackUrl: "/calendar" })
+            await signIn(providerId, { callbackUrl: "/dashboard" })
         } catch {
             setError(`Failed to sign in with ${providerId}`)
             setLoadingProvider(null)
+        }
+    }
+
+    const handleCredentialLogin = async (e: React.FormEvent) => {
+        e.preventDefault()
+        setCredentialLoading(true)
+        setError("")
+
+        try {
+            const result = await signIn("credentials", {
+                email: email.trim().toLowerCase(),
+                password,
+                redirect: false,
+            })
+
+            if (result?.error) {
+                setError(result.error)
+                setCredentialLoading(false)
+            } else if (result?.ok) {
+                router.push("/dashboard")
+            }
+        } catch {
+            setError("An unexpected error occurred")
+            setCredentialLoading(false)
         }
     }
 
@@ -87,19 +142,96 @@ export default function LoginPage() {
 
                 {/* Sign in card */}
                 <div className="glass rounded-2xl p-8">
+                    {registered && (
+                        <div className="mb-6 p-4 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-sm">
+                            Account created successfully! Please sign in.
+                        </div>
+                    )}
+
                     {error && (
                         <div className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
                             {error}
                         </div>
                     )}
 
+                    {/* Email & Password Login */}
+                    <form onSubmit={handleCredentialLogin} className="space-y-4 mb-6">
+                        <div>
+                            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
+                                Email
+                            </label>
+                            <div className="relative">
+                                <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    id="email"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="you@example.com"
+                                    required
+                                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-colors"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1.5">
+                                Password
+                            </label>
+                            <div className="relative">
+                                <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    id="password"
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    required
+                                    className="w-full pl-10 pr-12 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-colors"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 transition-colors"
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={credentialLoading || !email || !password}
+                            className="w-full py-3 rounded-lg gradient-primary text-white font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {credentialLoading ? (
+                                <span className="loading-spinner" />
+                            ) : (
+                                "Sign in"
+                            )}
+                        </button>
+                    </form>
+
+                    {/* Divider */}
+                    {providers.length > 0 && (
+                        <div className="relative mb-6">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-white/10" />
+                            </div>
+                            <div className="relative flex justify-center text-sm">
+                                <span className="px-3 bg-[var(--card)] text-slate-400">or continue with</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* OAuth Providers */}
                     <div className="space-y-3">
                         {providers.map((provider) => (
                             <button
                                 key={provider.id}
                                 type="button"
                                 onClick={() => handleSignIn(provider.id)}
-                                disabled={loadingProvider !== null}
+                                disabled={loadingProvider !== null || credentialLoading}
                                 className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg bg-white text-gray-700 font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
                             >
                                 {loadingProvider === provider.id ? (
@@ -114,15 +246,11 @@ export default function LoginPage() {
                         ))}
                     </div>
 
-                    {providers.length === 0 && (
-                        <p className="text-center text-slate-400 text-sm py-4">
-                            Loading sign-in options...
-                        </p>
-                    )}
-
-                    <p className="mt-6 text-center text-xs text-slate-500">
-                        By signing in, you agree to our terms of service.
-                        Your account will be created automatically on first sign-in.
+                    <p className="mt-6 text-center text-sm text-slate-400">
+                        Don&apos;t have an account?{" "}
+                        <Link href="/register" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                            Create one
+                        </Link>
                     </p>
                 </div>
             </div>

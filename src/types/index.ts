@@ -4,6 +4,7 @@ export interface User {
     name: string
     role: "ADMIN" | "USER"
     timezone: string
+    country?: string
     slug: string
     avatarUrl?: string
     theme?: "dark" | "light"
@@ -100,6 +101,19 @@ export interface AuditLog {
     userId?: string
     user?: { id: string; name: string; email: string }
     createdAt: string
+}
+
+export interface CalendarStream {
+    id: string
+    name: string
+    url: string
+    color: string
+    category: string
+    isActive: boolean
+    lastSyncAt?: string
+    userId: string
+    createdAt: string
+    updatedAt: string
 }
 
 export interface TimeSlot {

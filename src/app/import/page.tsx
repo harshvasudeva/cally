@@ -3,7 +3,6 @@
 import { useState, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { Upload, FileText, Check, AlertCircle } from "lucide-react"
 
 export default function ImportPage() {
@@ -75,11 +74,7 @@ export default function ImportPage() {
     }
 
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto">
                     {/* Header */}
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold text-white">Import Calendar</h1>
@@ -213,8 +208,6 @@ export default function ImportPage() {
                             </ol>
                         </div>
                     </div>
-                </div>
-            </main>
         </div>
     )
 }

@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { User } from "@/types"
 import { format, parseISO } from "date-fns"
 import { Users, Shield, UserCheck, Trash2, Search } from "lucide-react"
@@ -18,7 +17,7 @@ export default function UsersPage() {
         fetchUsers()
     }, [])
 
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             const res = await fetch("/api/admin/users")
             const data = await res.json()
@@ -30,9 +29,19 @@ export default function UsersPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [])
 
     const isAdmin = (session?.user as { role?: string })?.role === "ADMIN"
+
+    const filteredUsers = useMemo(() => users.filter(user =>
+        user.name.toLowerCase().includes(search.toLowerCase()) ||
+        user.email.toLowerCase().includes(search.toLowerCase())
+    ), [users, search])
+
+    const roleCounts = useMemo(() => ({
+        admins: users.filter(u => u.role === "ADMIN").length,
+        regular: users.filter(u => u.role === "USER").length,
+    }), [users])
 
     if (status === "loading" || loading) {
         return (
@@ -50,17 +59,8 @@ export default function UsersPage() {
         redirect("/calendar")
     }
 
-    const filteredUsers = users.filter(user =>
-        user.name.toLowerCase().includes(search.toLowerCase()) ||
-        user.email.toLowerCase().includes(search.toLowerCase())
-    )
-
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -106,7 +106,7 @@ export default function UsersPage() {
                                 </div>
                                 <div>
                                     <p className="text-2xl font-bold text-white">
-                                        {users.filter(u => u.role === "ADMIN").length}
+                                        {roleCounts.admins}
                                     </p>
                                     <p className="text-sm text-slate-400">Admins</p>
                                 </div>
@@ -119,7 +119,7 @@ export default function UsersPage() {
                                 </div>
                                 <div>
                                     <p className="text-2xl font-bold text-white">
-                                        {users.filter(u => u.role === "USER").length}
+                                        {roleCounts.regular}
                                     </p>
                                     <p className="text-sm text-slate-400">Regular Users</p>
                                 </div>
@@ -190,8 +190,6 @@ export default function UsersPage() {
                             </div>
                         )}
                     </div>
-                </div>
-            </main>
         </div>
     )
 }

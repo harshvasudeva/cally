@@ -25,6 +25,14 @@ export type AuditAction =
   | "DATE_OVERRIDE_DELETE"
   | "ACCOUNT_LOCKED"
   | "ACCOUNT_UNLOCKED"
+  | "BACKUP_CREATE"
+  | "DATA_EXPORT"
+  | "API_KEY_CREATE"
+  | "API_KEY_REVOKE"
+  | "DOMAIN_UPDATE"
+  | "SSL_UPLOAD"
+  | "STREAM_CREATE"
+  | "STREAM_DELETE"
 
 interface AuditLogInput {
   action: AuditAction

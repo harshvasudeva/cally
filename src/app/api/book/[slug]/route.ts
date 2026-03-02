@@ -4,6 +4,8 @@ import { addMinutes, format, startOfDay, endOfDay, parseISO, isBefore, isAfter }
 import { rateLimit, getRateLimitHeaders } from "@/lib/rate-limit"
 import { sanitizeBookingInput } from "@/lib/sanitize"
 import { createAuditLog, getClientIp } from "@/lib/audit"
+import { appointmentConfirmationEmail, appointmentRequestEmail, sendEmail } from "@/lib/email"
+import { sendWebhook } from "@/lib/webhook"
 
 // GET available slots for booking
 export async function GET(
@@ -56,7 +58,7 @@ export async function GET(
             return NextResponse.json({
                 slots: [],
                 appointmentType,
-                user: { name: user.name, slug: user.slug },
+                user: { name: user.name, slug: user.slug, timezone: user.timezone },
                 blocked: true,
                 blockReason: override.reason || "This date is unavailable"
             })
@@ -74,7 +76,7 @@ export async function GET(
             return NextResponse.json({
                 slots: [],
                 appointmentType,
-                user: { name: user.name, slug: user.slug }
+                user: { name: user.name, slug: user.slug, timezone: user.timezone }
             })
         }
 
@@ -109,7 +111,7 @@ export async function GET(
             return NextResponse.json({
                 slots: [],
                 appointmentType,
-                user: { name: user.name, slug: user.slug },
+                user: { name: user.name, slug: user.slug, timezone: user.timezone },
                 maxReached: true
             })
         }
@@ -167,7 +169,7 @@ export async function GET(
         return NextResponse.json({
             slots,
             appointmentType,
-            user: { name: user.name, slug: user.slug }
+            user: { name: user.name, slug: user.slug, timezone: user.timezone }
         })
     } catch (error) {
         console.error("Error fetching slots:", error)
@@ -329,6 +331,55 @@ export async function POST(
             ipAddress: ip,
             userId: user.id,
         })
+
+        // Send email notifications (non-blocking)
+        const emailDateStr = format(startDate, "MMMM d, yyyy")
+        const emailTimeStr = format(startDate, "h:mm a") + " - " + format(endDate, "h:mm a")
+
+        // Email to guest: booking confirmation
+        const guestEmail = appointmentConfirmationEmail({
+            guestName: sanitized.guestName,
+            hostName: user.name || "Host",
+            title: appointmentType.name,
+            date: emailDateStr,
+            time: emailTimeStr,
+            duration: appointmentType.duration,
+        })
+        sendEmail({
+            to: sanitized.guestEmail,
+            subject: guestEmail.subject,
+            html: guestEmail.html,
+        }).catch(err => console.error("Failed to send guest email:", err))
+
+        // Email to host: new booking request
+        if (user.email) {
+            const hostEmail = appointmentRequestEmail({
+                hostName: user.name || "Host",
+                guestName: sanitized.guestName,
+                guestEmail: sanitized.guestEmail,
+                title: appointmentType.name,
+                date: emailDateStr,
+                time: emailTimeStr,
+                dashboardLink: "/appointments",
+            })
+            sendEmail({
+                to: user.email,
+                subject: hostEmail.subject,
+                html: hostEmail.html,
+            }).catch(err => console.error("Failed to send host email:", err))
+        }
+
+        // Webhook notification (non-blocking)
+        sendWebhook("appointment.created", {
+            id: appointment.id,
+            title: appointment.title,
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+            guestName: sanitized.guestName,
+            guestEmail: sanitized.guestEmail,
+            appointmentType: appointmentType.name,
+            status: appointment.status,
+        }).catch(err => console.error("Failed to send webhook:", err))
 
         return NextResponse.json(appointment, { status: 201 })
     } catch (error) {

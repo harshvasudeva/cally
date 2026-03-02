@@ -9,26 +9,68 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>()
 
 // Clean up expired entries every 5 minutes
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, entry] of store) {
-    if (now > entry.resetAt) {
-      store.delete(key)
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now()
+    for (const [key, entry] of store) {
+      if (now > entry.resetAt) {
+        store.delete(key)
+      }
     }
-  }
-}, 5 * 60 * 1000)
+  }, 5 * 60 * 1000)
+}
 
-interface RateLimitConfig {
+export interface RateLimitConfig {
   maxRequests: number
   windowMs: number
 }
 
-const RATE_LIMITS: Record<string, RateLimitConfig> = {
+// Default limits — can be overridden via admin settings
+const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
   api: { maxRequests: 100, windowMs: 60 * 1000 },           // 100 req/min for general API
   auth: { maxRequests: 10, windowMs: 15 * 60 * 1000 },      // 10 attempts per 15 min
   booking: { maxRequests: 20, windowMs: 60 * 1000 },         // 20 bookings/min per IP
   admin: { maxRequests: 30, windowMs: 60 * 1000 },           // 30 req/min for admin endpoints
   events: { maxRequests: 60, windowMs: 60 * 1000 },          // 60 req/min for event CRUD
+}
+
+// Mutable copy of rate limits — updated when admin changes settings
+let RATE_LIMITS = { ...DEFAULT_RATE_LIMITS }
+
+/**
+ * Update rate limit configuration at runtime (called from admin settings API).
+ */
+export function updateRateLimits(overrides: Record<string, Partial<RateLimitConfig>>) {
+  for (const [key, config] of Object.entries(overrides)) {
+    if (RATE_LIMITS[key]) {
+      RATE_LIMITS[key] = {
+        maxRequests: config.maxRequests ?? RATE_LIMITS[key].maxRequests,
+        windowMs: config.windowMs ?? RATE_LIMITS[key].windowMs,
+      }
+    }
+  }
+}
+
+/**
+ * Get current rate limit configuration (for admin UI).
+ */
+export function getRateLimitConfig(): Record<string, RateLimitConfig> {
+  return { ...RATE_LIMITS }
+}
+
+/**
+ * Get current rate limit stats for monitoring.
+ */
+export function getRateLimitStats() {
+  const stats = {
+    totalEntries: store.size,
+    activeByType: {} as Record<string, number>,
+  }
+  for (const key of store.keys()) {
+    const type = key.split(":")[0]
+    stats.activeByType[type] = (stats.activeByType[type] || 0) + 1
+  }
+  return stats
 }
 
 export function rateLimit(

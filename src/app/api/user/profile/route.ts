@@ -22,6 +22,7 @@ export async function GET() {
         avatarUrl: true,
         image: true,
         theme: true,
+        country: true,
         onboardingCompleted: true,
         createdAt: true,
         updatedAt: true,
@@ -47,7 +48,7 @@ async function handleUpdate(request: NextRequest) {
     const userId = (session.user as { id: string }).id
 
     const body = await request.json()
-    const { name, timezone, theme, onboardingCompleted } = body
+    const { name, timezone, theme, country, onboardingCompleted } = body
 
     // Validate timezone if provided
     if (timezone !== undefined) {
@@ -66,10 +67,21 @@ async function handleUpdate(request: NextRequest) {
       )
     }
 
+    // Validate country code if provided (ISO 3166-1 alpha-2)
+    if (country !== undefined && country !== null && country !== "") {
+      if (typeof country !== "string" || !/^[A-Z]{2}$/.test(country)) {
+        return NextResponse.json(
+          { error: "Invalid country code. Must be an ISO 3166-1 alpha-2 code (e.g. US, GB, IN)" },
+          { status: 400 }
+        )
+      }
+    }
+
     const updateData: Record<string, unknown> = {}
     if (name !== undefined) updateData.name = name
     if (timezone !== undefined) updateData.timezone = timezone
     if (theme !== undefined) updateData.theme = theme
+    if (country !== undefined) updateData.country = country || null
     if (onboardingCompleted !== undefined) updateData.onboardingCompleted = onboardingCompleted
 
     if (Object.keys(updateData).length === 0) {
@@ -89,6 +101,7 @@ async function handleUpdate(request: NextRequest) {
         avatarUrl: true,
         image: true,
         theme: true,
+        country: true,
         onboardingCompleted: true,
         createdAt: true,
         updatedAt: true,

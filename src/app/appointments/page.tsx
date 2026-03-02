@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { Appointment } from "@/types"
 import { format, parseISO } from "date-fns"
 import {
@@ -24,7 +23,7 @@ export default function AppointmentsPage() {
         fetchAppointments()
     }, [])
 
-    const fetchAppointments = async () => {
+    const fetchAppointments = useCallback(async () => {
         try {
             const res = await fetch("/api/appointments")
             const data = await res.json()
@@ -34,9 +33,9 @@ export default function AppointmentsPage() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [])
 
-    const updateStatus = async (id: string, newStatus: string) => {
+    const updateStatus = useCallback(async (id: string, newStatus: string) => {
         try {
             await fetch(`/api/appointments/${id}`, {
                 method: "PUT",
@@ -47,17 +46,17 @@ export default function AppointmentsPage() {
         } catch (error) {
             console.error("Error updating appointment:", error)
         }
-    }
+    }, [fetchAppointments])
 
     // (#90) Bulk actions
-    const toggleSelect = (id: string) => {
+    const toggleSelect = useCallback((id: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev)
             if (next.has(id)) next.delete(id)
             else next.add(id)
             return next
         })
-    }
+    }, [])
 
     const toggleSelectAll = () => {
         if (selectedIds.size === filteredAppointments.length) {
@@ -67,7 +66,7 @@ export default function AppointmentsPage() {
         }
     }
 
-    const handleBulkAction = async (action: "CONFIRMED" | "CANCELLED" | "DELETE") => {
+    const handleBulkAction = useCallback(async (action: "CONFIRMED" | "CANCELLED" | "DELETE") => {
         if (selectedIds.size === 0) return
         setBulkLoading(true)
         try {
@@ -83,14 +82,31 @@ export default function AppointmentsPage() {
         } finally {
             setBulkLoading(false)
         }
-    }
+    }, [selectedIds, fetchAppointments])
+
+    // (#88) Filter by status and search — must be above early returns to respect Rules of Hooks
+    const filteredAppointments = useMemo(() => appointments
+        .filter(a => filter === "all" || a.status === filter.toUpperCase())
+        .filter(a => {
+            if (!searchQuery) return true
+            const q = searchQuery.toLowerCase()
+            return (
+                a.guestName.toLowerCase().includes(q) ||
+                a.guestEmail.toLowerCase().includes(q) ||
+                a.title.toLowerCase().includes(q)
+            )
+        }), [appointments, filter, searchQuery])
+
+    const counts = useMemo(() => ({
+        all: appointments.length,
+        pending: appointments.filter(a => a.status === "PENDING").length,
+        confirmed: appointments.filter(a => a.status === "CONFIRMED").length,
+        cancelled: appointments.filter(a => a.status === "CANCELLED").length,
+    }), [appointments])
 
     if (status === "loading" || loading) {
         return (
-            <div className="min-h-screen flex">
-                <Sidebar />
-                <main className="flex-1 p-6 md:p-8 overflow-auto">
-                    <div className="max-w-6xl mx-auto">
+            <div className="max-w-6xl mx-auto">
                         <div className="mb-8">
                             <div className="h-8 w-48 bg-slate-700/50 rounded animate-pulse mb-2" />
                             <div className="h-4 w-64 bg-slate-700/50 rounded animate-pulse" />
@@ -114,8 +130,6 @@ export default function AppointmentsPage() {
                                 </div>
                             ))}
                         </div>
-                    </div>
-                </main>
             </div>
         )
     }
@@ -123,19 +137,6 @@ export default function AppointmentsPage() {
     if (!session) {
         redirect("/login")
     }
-
-    // (#88) Filter by status and search
-    const filteredAppointments = appointments
-        .filter(a => filter === "all" || a.status === filter.toUpperCase())
-        .filter(a => {
-            if (!searchQuery) return true
-            const q = searchQuery.toLowerCase()
-            return (
-                a.guestName.toLowerCase().includes(q) ||
-                a.guestEmail.toLowerCase().includes(q) ||
-                a.title.toLowerCase().includes(q)
-            )
-        })
 
     const getStatusBadge = (status: string) => {
         switch (status) {
@@ -150,19 +151,9 @@ export default function AppointmentsPage() {
         }
     }
 
-    const counts = {
-        all: appointments.length,
-        pending: appointments.filter(a => a.status === "PENDING").length,
-        confirmed: appointments.filter(a => a.status === "CONFIRMED").length,
-        cancelled: appointments.filter(a => a.status === "CANCELLED").length,
-    }
 
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -388,8 +379,6 @@ export default function AppointmentsPage() {
                             ))}
                         </div>
                     )}
-                </div>
-            </main>
         </div>
     )
 }

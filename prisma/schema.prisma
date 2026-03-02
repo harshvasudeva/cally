@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma/client"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
 }
 
 model User {
@@ -27,6 +27,9 @@ model User {
   // Theme preference (#76)
   theme         String         @default("dark")
 
+  // Country code (ISO 3166-1 alpha-2) for holiday detection
+  country       String?
+
   accounts      Account[]
   sessions      Session[]
 
@@ -37,11 +40,18 @@ model User {
   appointmentTypes AppointmentType[]
   dateOverrides DateOverride[]
   auditLogs     AuditLog[]
+  calendarStreams CalendarStream[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
   // Onboarding (#83)
   onboardingCompleted Boolean  @default(false)
+
+  // iCal subscription token (#53) — private URL for calendar apps
+  icalToken     String?        @unique
+
+  // Notification preferences (JSON) (#6)
+  notificationPrefs String?    // JSON: { emailBooking, emailCancellation, emailReminder, ... }
 }
 
 model Account {
@@ -177,6 +187,24 @@ model DateOverride {
   @@index([userId])
 }
 
+// Calendar stream subscriptions (external iCal feeds, sports, holidays)
+model CalendarStream {
+  id          String   @id @default(cuid())
+  name        String   // Display name e.g. "F1 2026 Calendar"
+  url         String   // iCal feed URL
+  color       String   @default("#6366f1") // Display color on calendar
+  category    String   @default("other") // sports | holidays | other
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, url])
+  @@index([userId])
+}
+
 // Audit logging (#4)
 model AuditLog {
   id        String   @id @default(cuid())
@@ -200,6 +228,13 @@ model Settings {
   siteName        String  @default("Cally")
   siteDescription String  @default("Self-hosted calendar and scheduling")
   primaryColor    String  @default("#3b82f6")
+  logoUrl         String?
+
+  // Domain & SSL
+  fqdn            String?  // e.g. cal.example.com
+  sslCertPath     String?  // Path to SSL cert file
+  sslKeyPath      String?  // Path to SSL key file
+  sslMode         String   @default("auto") // auto | custom | none
 
   // Email (SMTP)
   emailFrom       String?
@@ -212,15 +247,51 @@ model Settings {
   discordBotToken String?
   discordClientId String?
 
+  // Webhooks
+  webhookUrl      String?
+  webhookSecret   String?
+  webhookEvents   String?  // JSON array of event types to send
+
   allowRegistration Boolean @default(true)
 
   // Security (#11)
   maxLoginAttempts  Int     @default(5)
   lockoutDuration   Int     @default(15) // minutes
+  requireEmailVerification Boolean @default(false)
+  ipWhitelist       String?  // Comma-separated CIDR ranges for admin access
 
   // Maintenance mode (#26)
   maintenanceMode   Boolean @default(false)
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Email verification tokens
+model VerificationToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  email      String
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([token])
+  @@index([email])
+}
+
+// API Keys for programmatic access
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String
+  keyHash     String   @unique // bcrypt hash of the key
+  keyPrefix   String   // First 8 chars for identification
+  permissions String   @default("read") // read | write | admin
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@index([keyHash])
+  @@index([userId])
 }

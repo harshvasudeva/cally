@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { AppointmentType } from "@/types"
 import { Clock, Plus, Edit2, Trash2, Link2, X, AlertCircle, Hash } from "lucide-react"
 
@@ -120,11 +119,8 @@ export default function AppointmentTypesPage() {
     }
 
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-4xl mx-auto">
+        <>
+            <div className="max-w-4xl mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -222,8 +218,7 @@ export default function AppointmentTypesPage() {
                             })}
                         </div>
                     )}
-                </div>
-            </main>
+            </div>
 
             {/* Modal */}
             {showModal && (
@@ -369,6 +364,6 @@ export default function AppointmentTypesPage() {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     )
 }

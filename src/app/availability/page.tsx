@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { Availability } from "@/types"
 import { Clock, Save, Plus, Trash2 } from "lucide-react"
 
@@ -120,6 +119,13 @@ export default function AvailabilityPage() {
         }
     }
 
+    // Group by day - must be before early returns to satisfy Rules of Hooks
+    const groupedByDay = useMemo(() => DAYS.map((day, index) => ({
+        day,
+        dayIndex: index,
+        slots: availability.filter(a => a.dayOfWeek === index)
+    })), [availability])
+
     if (status === "loading" || loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -132,19 +138,8 @@ export default function AvailabilityPage() {
         redirect("/login")
     }
 
-    // Group by day
-    const groupedByDay = DAYS.map((day, index) => ({
-        day,
-        dayIndex: index,
-        slots: availability.filter(a => a.dayOfWeek === index)
-    }))
-
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -257,8 +252,6 @@ export default function AvailabilityPage() {
                             <li>• Times are shown in your local timezone</li>
                         </ul>
                     </div>
-                </div>
-            </main>
         </div>
     )
 }

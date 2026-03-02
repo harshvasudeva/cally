@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } from "discord.js";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/prisma/client/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import * as dotenv from "dotenv";
 import { format, addMinutes, parseISO } from "date-fns";
 import path from "path";
@@ -9,7 +10,8 @@ import { v4 as uuidv4 } from "uuid";
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const prisma = new PrismaClient();
+const adapter = new PrismaBetterSqlite3({ url: "file:./prisma/dev.db" });
+const prisma = new PrismaClient({ adapter });
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,

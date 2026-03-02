@@ -3,6 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { createAuditLog } from "@/lib/audit"
+import { appointmentCancelledEmail, sendEmail } from "@/lib/email"
+import { sendWebhook } from "@/lib/webhook"
+import { format } from "date-fns"
 
 // GET single appointment
 export async function GET(
@@ -87,6 +90,55 @@ export async function PUT(
             },
             userId,
         })
+
+        // Send email & webhook notifications based on status change (non-blocking)
+        if (status === "CONFIRMED") {
+            // Notify guest that appointment is confirmed
+            sendEmail({
+                to: appointment.guestEmail,
+                subject: `Appointment Confirmed: ${appointment.title}`,
+                html: `<div style="font-family:sans-serif;color:#e2e8f0;background:#0f172a;padding:32px;border-radius:12px;">
+                    <h2 style="color:#818cf8;">✅ Appointment Confirmed</h2>
+                    <p>Your appointment <strong>${appointment.title}</strong> has been confirmed.</p>
+                    <p><strong>When:</strong> ${new Date(appointment.start).toLocaleString()}</p>
+                    ${appointment.meetingLink ? `<p><strong>Meeting Link:</strong> <a href="${appointment.meetingLink}" style="color:#818cf8;">${appointment.meetingLink}</a></p>` : ""}
+                    <p style="color:#64748b;margin-top:24px;font-size:12px;">This is an automated message.</p>
+                </div>`,
+            }).catch(err => console.error("Failed to send confirmation email:", err))
+
+            sendWebhook("appointment.confirmed", {
+                id: appointment.id,
+                title: appointment.title,
+                start: appointment.start,
+                end: appointment.end,
+                guestEmail: appointment.guestEmail,
+                guestName: appointment.guestName,
+                status: "CONFIRMED",
+            }).catch(err => console.error("Failed to send webhook:", err))
+        } else if (status === "CANCELLED") {
+            const cancelEmail = appointmentCancelledEmail({
+                recipientName: appointment.guestName,
+                title: appointment.title,
+                date: format(new Date(appointment.start), "MMMM d, yyyy"),
+                time: format(new Date(appointment.start), "h:mm a"),
+                cancelledBy: "the host",
+            })
+            sendEmail({
+                to: appointment.guestEmail,
+                subject: cancelEmail.subject,
+                html: cancelEmail.html,
+            }).catch(err => console.error("Failed to send cancellation email:", err))
+
+            sendWebhook("appointment.cancelled", {
+                id: appointment.id,
+                title: appointment.title,
+                start: appointment.start,
+                end: appointment.end,
+                guestEmail: appointment.guestEmail,
+                guestName: appointment.guestName,
+                status: "CANCELLED",
+            }).catch(err => console.error("Failed to send webhook:", err))
+        }
 
         return NextResponse.json(appointment)
     } catch (error) {

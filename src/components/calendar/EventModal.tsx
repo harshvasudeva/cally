@@ -44,7 +44,8 @@ export default function EventModal({
         allDay: event?.allDay || false,
         color: event?.color || "#3b82f6",
         location: event?.location || "",
-        category: event?.category || ""
+        category: event?.category || "",
+        recurrence: event?.recurrence || "",
     })
 
     if (!isOpen) return null
@@ -57,7 +58,8 @@ export default function EventModal({
             await onSave({
                 ...formData,
                 start: new Date(formData.start).toISOString(),
-                end: new Date(formData.end).toISOString()
+                end: new Date(formData.end).toISOString(),
+                recurrence: formData.recurrence || undefined,
             })
             onClose()
         } catch (error) {
@@ -147,6 +149,30 @@ export default function EventModal({
                         <label htmlFor="allDay" className="text-sm text-slate-300">
                             All day event
                         </label>
+                    </div>
+
+                    {/* Recurrence */}
+                    <div>
+                        <label className="label">Repeat</label>
+                        <select
+                            value={formData.recurrence}
+                            onChange={(e) => setFormData({ ...formData, recurrence: e.target.value })}
+                            className="input"
+                        >
+                            <option value="">Does not repeat</option>
+                            <option value="FREQ=DAILY">Daily</option>
+                            <option value="FREQ=DAILY;INTERVAL=2">Every other day</option>
+                            <option value="FREQ=WEEKLY">Weekly</option>
+                            <option value="FREQ=WEEKLY;INTERVAL=2">Every 2 weeks</option>
+                            <option value="FREQ=MONTHLY">Monthly</option>
+                            <option value="FREQ=YEARLY">Yearly</option>
+                            <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">Weekdays (Mon–Fri)</option>
+                        </select>
+                        {formData.recurrence && (
+                            <p className="text-xs text-slate-400 mt-1">
+                                This event will repeat based on the selected pattern.
+                            </p>
+                        )}
                     </div>
 
                     <div>

@@ -42,9 +42,53 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# Claude AI local data
-.claude
+# AI agent folders (created by npx skills)
+.agent/
+.agents/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.windsurf/
+.zencoder/
+skills/
+skills-lock.json
 
 # Editor folders
 .vscode/
 .idea/
+
+# Implementation plan (local only)
+implementationplan.md
+
+# SSL certificates
+/ssl/
+*.crt
+*.key
+
+# Backups
+/backups/
+
+# Database files
+*.db
+*.db-journal
+
+# Utility scripts
+check_users.ts

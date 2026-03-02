@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useSession, signIn } from "next-auth/react"
 import Link from "next/link"
 import { format, parseISO, addDays } from "date-fns"
-import { Calendar, Clock, ChevronLeft, ChevronRight, Check, User, Mail, Phone, FileText, Lock, ArrowRight } from "lucide-react"
+import { Calendar, Clock, ChevronLeft, ChevronRight, Check, User, Mail, Phone, FileText, Lock, ArrowRight, Globe, MapPin } from "lucide-react"
 import { TimeSlot, AppointmentType } from "@/types"
 
 interface BookingPageProps {
@@ -20,8 +20,9 @@ export default function BookingPage({ params }: BookingPageProps) {
     const [submitting, setSubmitting] = useState(false)
     const [success, setSuccess] = useState(false)
     const [error, setError] = useState("")
-    const [user, setUser] = useState<{ name: string; slug: string } | null>(null)
+    const [user, setUser] = useState<{ name: string; slug: string; timezone?: string } | null>(null)
     const [appointmentType, setAppointmentType] = useState<AppointmentType | null>(null)
+    const [siteName, setSiteName] = useState("Cally")
 
     // Initialize date from URL or default to today
     const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -51,6 +52,14 @@ export default function BookingPage({ params }: BookingPageProps) {
     useEffect(() => {
         fetchSlots()
     }, [selectedDate, slug])
+
+    // Fetch branding
+    useEffect(() => {
+        fetch("/api/branding")
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.siteName) setSiteName(d.siteName) })
+            .catch(() => {})
+    }, [])
 
     // Effect to handle URL params for seamless auth return
     useEffect(() => {
@@ -206,9 +215,26 @@ export default function BookingPage({ params }: BookingPageProps) {
                                 Book a time with {user.name}
                             </h1>
                             {appointmentType && (
-                                <p className="text-slate-400">
-                                    {appointmentType.name} • {appointmentType.duration} minutes
-                                </p>
+                                <div className="space-y-1">
+                                    <p className="text-slate-400">
+                                        {appointmentType.name} • {appointmentType.duration} minutes
+                                    </p>
+                                    {appointmentType.description && (
+                                        <p className="text-sm text-slate-500 max-w-lg mx-auto">{appointmentType.description}</p>
+                                    )}
+                                    <div className="flex items-center justify-center gap-4 text-xs text-slate-500 mt-2">
+                                        {appointmentType.location && (
+                                            <span className="flex items-center gap-1">
+                                                <MapPin size={12} /> {appointmentType.location}
+                                            </span>
+                                        )}
+                                        {user.timezone && (
+                                            <span className="flex items-center gap-1">
+                                                <Globe size={12} /> {user.timezone}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                             )}
                         </>
                     )}
@@ -483,7 +509,7 @@ export default function BookingPage({ params }: BookingPageProps) {
 
                 {/* Footer */}
                 <p className="text-center text-sm text-slate-500 mt-8">
-                    Powered by <span className="text-indigo-400 font-medium">Cally</span>
+                    Powered by <span className="text-indigo-400 font-medium">{siteName}</span>
                 </p>
             </div>
         </div>

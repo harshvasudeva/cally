@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import Sidebar from "@/components/Sidebar"
 import { Shield, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { format, parseISO } from "date-fns"
 
@@ -112,11 +111,7 @@ export default function AuditLogPage() {
     }
 
     return (
-        <div className="min-h-screen flex">
-            <Sidebar />
-
-            <main className="flex-1 p-6 md:p-8 overflow-auto">
-                <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto">
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
                         <div>
@@ -227,8 +222,6 @@ export default function AuditLogPage() {
                             </div>
                         )}
                     </div>
-                </div>
-            </main>
         </div>
     )
 }

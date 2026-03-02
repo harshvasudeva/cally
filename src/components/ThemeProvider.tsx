@@ -5,6 +5,8 @@ import {
     useContext,
     useState,
     useEffect,
+    useCallback,
+    useMemo,
     ReactNode,
 } from "react"
 
@@ -57,14 +59,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         }
     }
 
-    const setTheme = (newTheme: Theme) => {
+    const setTheme = useCallback((newTheme: Theme) => {
         setThemeState(newTheme)
         applyTheme(newTheme)
         localStorage.setItem("cally-theme", newTheme)
-    }
+    }, [])
+
+    const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme])
 
     return (
-        <ThemeContext.Provider value={{ theme, setTheme }}>
+        <ThemeContext.Provider value={value}>
             {children}
         </ThemeContext.Provider>
     )

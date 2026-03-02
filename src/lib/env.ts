@@ -66,6 +66,10 @@ export const env = {
   // Discord Bot (optional)
   get DISCORD_BOT_TOKEN() { return getEnvOptional("DISCORD_BOT_TOKEN") },
 
+  // Calendarific API (optional - for 230+ country holiday support)
+  // Get a free key at https://calendarific.com/signup
+  get CALENDARIFIC_API_KEY() { return getEnvOptional("CALENDARIFIC_API_KEY") },
+
   // App settings
   get NODE_ENV() { return getEnv("NODE_ENV", "development") },
   get PORT() { return getEnvInt("PORT", 3000) },

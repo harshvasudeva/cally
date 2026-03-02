@@ -84,7 +84,7 @@ interface OnboardingWizardProps {
 }
 
 export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
-    const { data: session } = useSession()
+    const { data: session, update } = useSession()
     const userName = session?.user?.name ?? "there"
     const userSlug = (session?.user as { slug?: string })?.slug ?? ""
 
@@ -199,11 +199,14 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     const handleFinish = async () => {
         setSaving(true)
         try {
-            await fetch("/api/user/profile", {
+            const res = await fetch("/api/user/profile", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ onboardingCompleted: true }),
             })
+            if (res.ok) {
+                await update()
+            }
         } catch {
             // Silently fail
         } finally {

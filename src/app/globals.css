@@ -1,614 +1,422 @@
 @import "tailwindcss";
 
-@theme {
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-primary-light: #e0e7ff;
-  --color-secondary: #8b5cf6;
-  --color-accent: #06b6d4;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-light: #334155;
-  --color-text: #f1f5f9;
-  --color-text-muted: #94a3b8;
-  --color-border: #334155;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  font-family: var(--font-inter), system-ui, sans-serif;
-  background: var(--color-background);
-  color: var(--color-text);
-  min-height: 100vh;
-  transition: background-color 0.3s, color 0.3s;
-}
-
 /* ============================================
-   (#76) Light Theme Support
+   Design Tokens — Cally v2 "Focused Productivity"
+   Light-first, clean, minimal, fast
+   Inspired by Linear, Notion, Cal.com
+
+   Architecture follows Tailwind v4 four-step pattern:
+   1. :root — define CSS variables (light mode)
+   2. .dark — override CSS variables (dark mode)
+   3. @theme inline — map variables → Tailwind utilities
+   4. @layer base — apply to body
    ============================================ */
-html.light {
-  --color-background: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-light: #f1f5f9;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-border: #e2e8f0;
+
+/* ── Step 1: Light Mode CSS Variables ─────────────── */
+:root {
+  /* Primary */
+  --primary: hsl(239 84% 67%);
+  --primary-hover: hsl(239 73% 58%);
+  --primary-light: hsl(226 100% 97%);
+  --primary-dark: hsl(239 64% 50%);
+  --primary-foreground: hsl(0 0% 100%);
+
+  /* Secondary */
+  --secondary: hsl(263 70% 67%);
+  --secondary-foreground: hsl(0 0% 100%);
+
+  /* Accent */
+  --accent: hsl(187 92% 41%);
+  --accent-foreground: hsl(0 0% 100%);
+
+  /* Semantic */
+  --success: hsl(160 68% 40%);
+  --success-light: hsl(152 81% 96%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 92% 50%);
+  --warning-light: hsl(48 96% 97%);
+  --warning-foreground: hsl(0 0% 100%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-light: hsl(0 86% 97%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --info: hsl(217 91% 60%);
+  --info-light: hsl(214 95% 97%);
+  --info-foreground: hsl(0 0% 100%);
+
+  /* Surface */
+  --background: hsl(0 0% 98%);
+  --foreground: hsl(0 0% 9%);
+  --surface: hsl(0 0% 100%);
+  --surface-secondary: hsl(0 0% 96%);
+  --surface-tertiary: hsl(0 0% 90%);
+  --surface-hover: hsl(0 0% 94%);
+
+  /* Text */
+  --text: hsl(0 0% 9%);
+  --text-secondary: hsl(0 0% 32%);
+  --text-tertiary: hsl(0 0% 64%);
+  --text-inverse: hsl(0 0% 98%);
+
+  /* Muted */
+  --muted: hsl(0 0% 96%);
+  --muted-foreground: hsl(0 0% 45%);
+
+  /* Borders */
+  --border: hsl(0 0% 90%);
+  --border-hover: hsl(0 0% 83%);
+  --border-focus: hsl(239 84% 67%);
+  --ring: hsl(239 84% 67%);
+  --input: hsl(0 0% 90%);
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Navigation */
+  --nav-rail-width: 64px;
+  --nav-rail-expanded: 240px;
+  --top-bar-height: 56px;
+
+  /* Transitions */
+  --transition-fast: 100ms ease;
+  --transition-base: 150ms ease;
+  --transition-slow: 300ms ease;
+
+  color-scheme: light;
 }
 
-html.light body {
-  background: var(--color-background);
-  color: var(--color-text);
+/* ── Step 2: Dark Mode CSS Variable Overrides ─────── */
+.dark {
+  --primary: hsl(239 84% 67%);
+  --primary-hover: hsl(239 73% 58%);
+  --primary-light: hsla(239 84% 67% / 0.15);
+  --primary-dark: hsl(239 64% 50%);
+
+  --background: hsl(0 0% 4%);
+  --foreground: hsl(0 0% 98%);
+  --surface: hsl(0 0% 8%);
+  --surface-secondary: hsl(0 0% 11%);
+  --surface-tertiary: hsl(0 0% 15%);
+  --surface-hover: hsl(0 0% 12%);
+
+  --text: hsl(0 0% 98%);
+  --text-secondary: hsl(0 0% 64%);
+  --text-tertiary: hsl(0 0% 32%);
+  --text-inverse: hsl(0 0% 9%);
+
+  --muted: hsl(0 0% 15%);
+  --muted-foreground: hsl(0 0% 64%);
+
+  --border: hsl(0 0% 15%);
+  --border-hover: hsl(0 0% 25%);
+  --input: hsl(0 0% 15%);
+
+  --success-light: hsla(160 68% 40% / 0.15);
+  --warning-light: hsla(38 92% 50% / 0.15);
+  --destructive-light: hsla(0 84% 60% / 0.15);
+  --info-light: hsla(217 91% 60% / 0.15);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+
+  color-scheme: dark;
 }
 
-html.light .glass {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+/* ── Step 3: Map Variables → Tailwind Utilities ───── */
+@theme inline {
+  /* Primary */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-foreground: var(--primary-foreground);
+
+  /* Secondary */
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Semantic */
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-light: var(--destructive-light);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-danger: var(--destructive);
+  --color-danger-light: var(--destructive-light);
+  --color-info: var(--info);
+  --color-info-light: var(--info-light);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Surface */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-surface-tertiary: var(--surface-tertiary);
+  --color-surface-hover: var(--surface-hover);
+
+  /* Text */
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-inverse: var(--text-inverse);
+
+  /* Muted */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* Borders & Input */
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-border-focus: var(--border-focus);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+
+  /* Shadows */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+
+  /* Radius */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+
+  /* Spacing (4px grid) */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Navigation */
+  --nav-rail-width: 64px;
+  --nav-rail-expanded: 240px;
+  --top-bar-height: 56px;
+
+  /* Transitions */
+  --transition-fast: 100ms ease;
+  --transition-base: 150ms ease;
+  --transition-slow: 300ms ease;
 }
 
-html.light .gradient-radial {
-  background: radial-gradient(ellipse at top, #e0e7ff 0%, #f8fafc 100%);
-}
-
-html.light .card {
-  background: var(--color-surface);
-  border-color: var(--color-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-html.light .input {
-  background-color: var(--color-surface);
-  border-color: var(--color-border);
-  color: var(--color-text);
-}
-
-html.light .input::placeholder {
-  color: var(--color-text-muted);
-}
-
-html.light .label {
-  color: #475569;
-}
-
-html.light .btn-outline {
-  border-color: var(--color-border);
-  color: #475569;
-}
-
-html.light .btn-outline:hover {
-  background-color: var(--color-surface-light);
-  color: var(--color-text);
-}
-
-html.light .btn-secondary {
-  background-color: var(--color-surface-light);
-  color: var(--color-text);
-}
-
-html.light .btn:focus {
-  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-primary);
-}
-
-/* Light sidebar */
-html.light aside {
-  background: var(--color-surface) !important;
-  border-color: var(--color-border) !important;
-}
-
-html.light aside .text-white {
-  color: var(--color-text);
-}
-
-html.light aside .text-slate-400 {
-  color: var(--color-text-muted);
-}
-
-html.light aside .text-slate-500 {
-  color: #94a3b8;
-}
-
-html.light aside .border-slate-700 {
-  border-color: var(--color-border);
-}
-
-html.light aside .hover\:bg-slate-800:hover {
-  background-color: var(--color-surface-light);
-}
-
-html.light aside .bg-slate-800 {
-  background-color: var(--color-surface-light);
-}
-
-/* Light FullCalendar */
-html.light .fc .fc-toolbar-title {
-  color: var(--color-text);
-}
-
-html.light .fc .fc-daygrid-day-number,
-html.light .fc .fc-col-header-cell-cushion {
-  color: var(--color-text);
-}
-
-html.light .fc .fc-daygrid-day:hover {
-  background-color: rgba(99, 102, 241, 0.05);
-}
-
-html.light .fc .fc-timegrid-slot {
-  border-color: var(--color-border);
-}
-
-html.light .fc .fc-timegrid-axis {
-  color: var(--color-text-muted);
-}
-
-html.light .fc {
-  --fc-border-color: var(--color-border);
-  --fc-button-bg-color: var(--color-surface);
-  --fc-button-border-color: var(--color-border);
-  --fc-button-text-color: var(--color-text);
-  --fc-button-hover-bg-color: var(--color-surface-light);
-  --fc-neutral-bg-color: var(--color-surface);
-  --fc-page-bg-color: transparent;
-}
-
-/* Light scrollbar */
-html.light ::-webkit-scrollbar-track {
-  background: var(--color-surface-light);
-}
-
-html.light ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-}
-
-html.light ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary);
-}
-
-/* Light text overrides for main content */
-html.light .text-white {
-  color: var(--color-text);
-}
-
-html.light .text-slate-300 {
-  color: #475569;
-}
-
-html.light .text-slate-400 {
-  color: var(--color-text-muted);
-}
-
-html.light .text-slate-500 {
-  color: #94a3b8;
-}
-
-html.light .bg-slate-800 {
-  background-color: var(--color-surface-light);
-}
-
-html.light .bg-slate-900 {
-  background-color: var(--color-surface);
-}
-
-html.light .border-slate-700 {
-  border-color: var(--color-border);
-}
-
-html.light .border-slate-600 {
-  border-color: var(--color-border);
-}
-
-/* ============================================
-   Premium Glass Effect
-   ============================================ */
-.glass {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(99, 102, 241, 0.1);
-}
-
-.glass-light {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Gradient Backgrounds */
-.gradient-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
-}
-
-.gradient-dark {
-  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-}
-
-.gradient-radial {
-  background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 100%);
-}
-
-/* Animated Gradient Border */
-.gradient-border {
-  position: relative;
-  border-radius: 12px;
-  padding: 1px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
-  background-size: 200% 200%;
-  animation: gradientShift 3s ease infinite;
-}
-
-.gradient-border>* {
-  background: var(--color-surface);
-  border-radius: 11px;
-}
-
-@keyframes gradientShift {
-  0%,
-  100% {
-    background-position: 0% 50%;
+/* ── Step 4: Base Styles ──────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
   }
-  50% {
-    background-position: 100% 50%;
+
+  body {
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-}
-
-/* ============================================
-   Button Styles
-   ============================================ */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
-  transition: all 0.2s ease-out;
-  cursor: pointer;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px var(--color-primary);
-}
-
-.btn-primary {
-  background-color: #6366f1;
-  color: white;
-  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.25);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #4f46e5;
-  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4);
-}
-
-.btn-secondary {
-  background-color: #334155;
-  color: white;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: #475569;
-}
-
-.btn-outline {
-  background-color: transparent;
-  border: 1px solid #475569;
-  color: #cbd5e1;
-}
-
-.btn-outline:hover:not(:disabled) {
-  background-color: #334155;
-  color: white;
-}
-
-.btn-danger {
-  background-color: #ef4444;
-  color: white;
-  box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.25);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: #dc2626;
-}
-
-.btn-success {
-  background-color: #10b981;
-  color: white;
-  box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.25);
-}
-
-.btn-success:hover:not(:disabled) {
-  background-color: #059669;
-}
-
-/* ============================================
-   Card Styles
-   ============================================ */
-.card {
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-}
-
-.card-hover {
-  transition: all 0.3s ease-out;
-}
-
-.card-hover:hover {
-  transform: scale(1.01);
-  box-shadow: 0 20px 25px -5px rgba(99, 102, 241, 0.1);
-  border-color: rgba(99, 102, 241, 0.3);
-}
-
-/* ============================================
-   Input Styles
-   ============================================ */
-.input {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-  background-color: #1e293b;
-  border: 1px solid #475569;
-  color: white;
-}
-
-.input::placeholder {
-  color: #94a3b8;
-}
-
-.input:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px #6366f1;
-  border-color: transparent;
-}
-
-.input-error {
-  border-color: #ef4444;
-}
-
-.input-error:focus {
-  box-shadow: 0 0 0 2px #ef4444;
-}
-
-/* Label Styles */
-.label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #cbd5e1;
-  margin-bottom: 0.5rem;
 }
 
 /* ============================================
    FullCalendar Customization
    ============================================ */
 .fc {
-  --fc-border-color: var(--color-border);
-  --fc-button-bg-color: var(--color-surface);
-  --fc-button-border-color: var(--color-border);
-  --fc-button-text-color: var(--color-text);
-  --fc-button-hover-bg-color: var(--color-surface-light);
-  --fc-button-hover-border-color: var(--color-primary);
-  --fc-button-active-bg-color: var(--color-primary);
-  --fc-button-active-border-color: var(--color-primary);
-  --fc-event-bg-color: var(--color-primary);
-  --fc-event-border-color: var(--color-primary);
-  --fc-today-bg-color: rgba(99, 102, 241, 0.1);
+  --fc-border-color: var(--border);
+  --fc-button-bg-color: var(--surface);
+  --fc-button-border-color: var(--border);
+  --fc-button-text-color: var(--text);
+  --fc-button-hover-bg-color: var(--surface-hover);
+  --fc-button-hover-border-color: var(--primary);
+  --fc-button-active-bg-color: var(--primary);
+  --fc-button-active-border-color: var(--primary);
+  --fc-event-bg-color: var(--primary);
+  --fc-event-border-color: var(--primary);
+  --fc-today-bg-color: var(--primary-light);
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: var(--color-surface);
-  --fc-list-event-hover-bg-color: var(--color-surface-light);
+  --fc-neutral-bg-color: var(--surface);
+  --fc-list-event-hover-bg-color: var(--surface-hover);
 }
 
 .fc .fc-toolbar-title {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 600;
-  color: white;
+  color: var(--text);
 }
 
 .fc .fc-button {
-  border-radius: 0.5rem;
+  border-radius: var(--radius-md);
   font-weight: 500;
+  font-size: 0.8125rem;
   box-shadow: none;
+  transition: all var(--transition-fast);
 }
 
 .fc .fc-button:focus {
-  box-shadow: 0 0 0 2px #6366f1;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--primary);
 }
 
 .fc .fc-daygrid-day-number,
 .fc .fc-col-header-cell-cushion {
-  color: #cbd5e1;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
 }
 
 .fc .fc-daygrid-day.fc-day-today {
-  background-color: rgba(99, 102, 241, 0.1);
+  background-color: var(--primary-light);
 }
 
 .fc .fc-daygrid-day:hover {
-  background-color: rgba(51, 65, 85, 0.5);
+  background-color: var(--surface-hover);
 }
 
 .fc .fc-event {
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
   border: none;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  transition: transform 0.15s;
+  font-size: 0.75rem;
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--transition-fast);
 }
 
 .fc .fc-event:hover {
-  transform: scale(1.05);
+  transform: scale(1.02);
 }
 
 .fc .fc-timegrid-slot {
-  border-color: #334155;
+  border-color: var(--border);
 }
 
 .fc .fc-timegrid-axis {
-  color: #94a3b8;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
 }
 
 /* ============================================
-   Scrollbar Styling
+   Scrollbar
    ============================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
-  border-radius: 4px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-surface-light);
-  border-radius: 4px;
+  background: var(--border);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary);
+  background: var(--text-tertiary);
 }
 
 /* ============================================
    Animations
    ============================================ */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(4px); }
 }
 
 @keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes slideOutRight {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(100%);
-  }
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
-}
-
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out forwards;
-}
-
-.animate-slide-in-right {
-  animation: slideInRight 0.3s ease-out forwards;
-}
-
-.animate-slide-out-right {
-  animation: slideOutRight 0.3s ease-out forwards;
-}
-
-/* ============================================
-   Status Badge Colors
-   ============================================ */
-.status-pending {
-  background-color: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-confirmed {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-cancelled {
-  background-color: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-/* ============================================
-   Loading Animation
-   ============================================ */
-.loading-spinner {
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2px solid #475569;
-  border-top-color: #6366f1;
-  border-radius: 9999px;
-  animation: spin 1s linear infinite;
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+.animate-slide-in-right { animation: slideInRight 0.2s ease-out forwards; }
+.animate-slide-out-right { animation: slideOutRight 0.2s ease-out forwards; }
+.animate-scale-in { animation: scaleIn 0.15s ease-out forwards; }
+
+/* ============================================
+   Loading Spinner
+   ============================================ */
+.loading-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 9999px;
+  animation: spin 0.6s linear infinite;
+}
+
+.loading-spinner-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 1.5px;
+}
+
+.loading-spinner-lg {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 2.5px;
 }
 
 /* ============================================
-   Calendar Event Category Colors
+   Event Category Colors
    ============================================ */
 .event-default { background-color: #6366f1; }
 .event-meeting { background-color: #8b5cf6; }
@@ -618,69 +426,221 @@ html.light .border-slate-600 {
 .event-imported { background-color: #10b981; }
 
 /* ============================================
-   (#78) Accessibility - Focus visible styles
+   Accessibility
    ============================================ */
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-/* Skip to main content link (hidden until focused) */
 .skip-link {
   position: absolute;
   top: -40px;
   left: 0;
-  background: var(--color-primary);
+  background: var(--primary);
   color: white;
   padding: 0.5rem 1rem;
   z-index: 100;
-  transition: top 0.3s;
+  transition: top 0.2s;
+  border-radius: 0 0 var(--radius-md) 0;
 }
 
 .skip-link:focus {
   top: 0;
 }
 
-/* (#86) Print-Friendly Views */
+/* ============================================
+   Print
+   ============================================ */
 @media print {
-  aside,
-  .btn,
-  .loading-spinner,
-  nav {
-    display: none !important;
-  }
+  aside, nav, .btn, .loading-spinner,
+  .top-bar, .nav-rail,
+  [data-print-hide] { display: none !important; }
 
   body {
     background: white !important;
     color: black !important;
+    font-size: 12pt !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .card {
     background: white !important;
     border: 1px solid #e5e7eb !important;
     break-inside: avoid;
+    box-shadow: none !important;
+    margin-bottom: 12pt;
+  }
+
+  h1, h2, h3 {
+    color: black !important;
+    break-after: avoid;
+  }
+
+  a {
+    color: black !important;
+    text-decoration: underline;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #666;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 6pt 8pt !important;
+    color: black !important;
+    background: white !important;
+  }
+
+  th {
+    background: #f3f4f6 !important;
+    font-weight: bold;
   }
 
   .fc .fc-event {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
+
+  .fc-header-toolbar {
+    display: none !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
 }
 
 /* ============================================
-   Responsive Sidebar
+   Legacy glass styles (for backward compat)
+   Will be removed as pages migrate to v2 components
    ============================================ */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    inset: 0;
-    left: 0;
-    z-index: 50;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease-in-out;
-  }
+.glass {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
 
-  .sidebar.open {
-    transform: translateX(0);
-  }
+.dark .glass {
+  background: rgba(20, 20, 20, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+}
+
+.gradient-radial {
+  background: var(--background);
+}
+
+.dark .gradient-radial {
+  background: radial-gradient(ellipse at top, #141414 0%, #0a0a0a 100%);
+}
+
+/* Legacy button classes (backward compat) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all var(--transition-base);
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.btn-primary { background-color: var(--primary); color: white; }
+.btn-primary:hover:not(:disabled) { background-color: var(--primary-hover); }
+.btn-secondary { background-color: var(--surface-secondary); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { background-color: var(--surface-tertiary); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+.btn-outline:hover:not(:disabled) { background-color: var(--surface-hover); color: var(--text); border-color: var(--border-hover); }
+.btn-danger { background-color: var(--destructive); color: white; }
+.btn-danger:hover:not(:disabled) { background-color: #dc2626; }
+.btn-success { background-color: var(--success); color: white; }
+.btn-success:hover:not(:disabled) { background-color: #059669; }
+
+/* Legacy card/input (backward compat) */
+.card {
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.card-hover { transition: all var(--transition-base); }
+.card-hover:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+.input::placeholder { color: var(--text-tertiary); }
+.input:focus { outline: none; box-shadow: 0 0 0 2px var(--primary); border-color: transparent; }
+.input-error { border-color: var(--destructive); }
+.input-error:focus { box-shadow: 0 0 0 2px var(--destructive); }
+
+.label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.375rem;
+}
+
+/* Legacy status badges */
+.status-pending {
+  background-color: var(--warning-light);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.status-confirmed {
+  background-color: var(--success-light);
+  color: var(--success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.status-cancelled {
+  background-color: var(--destructive-light);
+  color: var(--destructive);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
 }

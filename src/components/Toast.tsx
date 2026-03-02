@@ -5,6 +5,7 @@ import {
     useContext,
     useState,
     useCallback,
+    useMemo,
     useRef,
     useEffect,
     ReactNode,
@@ -116,7 +117,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, [])
 
     return (
-        <ToastContext.Provider value={{ toast }}>
+        <ToastContext.Provider value={useMemo(() => ({ toast }), [toast])}>
             {children}
 
             {/* Toast container - bottom right */}

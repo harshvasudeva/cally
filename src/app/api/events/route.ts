@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { sanitizeEventInput } from "@/lib/sanitize"
 import { createAuditLog } from "@/lib/audit"
+import { RRule } from "rrule"
 
-// GET all events for the current user
+// GET all events for the current user (with RRULE expansion)
 export async function GET(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions)
@@ -20,14 +21,8 @@ export async function GET(request: NextRequest) {
 
         const userId = (session.user as { id: string }).id
 
-        const whereClause: { userId: string; start?: { gte: Date }; end?: { lte: Date } } = { userId }
-
-        if (start) {
-            whereClause.start = { gte: new Date(start) }
-        }
-        if (end) {
-            whereClause.end = { lte: new Date(end) }
-        }
+        // For recurring events, fetch a wider range since the base event may be outside the window
+        const whereClause: { userId: string; OR?: Array<Record<string, unknown>> } = { userId }
 
         // (#41) Use select to only fetch needed fields
         const events = await prisma.event.findMany({
@@ -50,7 +45,52 @@ export async function GET(request: NextRequest) {
             orderBy: { start: "asc" }
         })
 
-        return NextResponse.json(events)
+        // Expand recurring events into individual occurrences
+        const rangeStart = start ? new Date(start) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+        const rangeEnd = end ? new Date(end) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+
+        const expandedEvents: typeof events = []
+
+        for (const event of events) {
+            if (!event.recurrence) {
+                // Non-recurring: include if in range (or if no range specified)
+                const eventStart = new Date(event.start)
+                const eventEnd = new Date(event.end)
+                if (eventStart <= rangeEnd && eventEnd >= rangeStart) {
+                    expandedEvents.push(event)
+                }
+                continue
+            }
+
+            // Recurring: expand with RRULE
+            try {
+                const duration = new Date(event.end).getTime() - new Date(event.start).getTime()
+                const rule = new RRule({
+                    ...RRule.parseString(event.recurrence),
+                    dtstart: new Date(event.start),
+                })
+
+                const occurrences = rule.between(rangeStart, rangeEnd, true)
+
+                for (const occurrence of occurrences) {
+                    expandedEvents.push({
+                        ...event,
+                        id: `${event.id}_${occurrence.getTime()}`, // Unique ID per occurrence
+                        start: occurrence,
+                        end: new Date(occurrence.getTime() + duration),
+                    })
+                }
+            } catch (err) {
+                // If RRULE parsing fails, just include the base event
+                console.error(`Failed to parse RRULE for event ${event.id}:`, err)
+                expandedEvents.push(event)
+            }
+        }
+
+        // Sort by start time
+        expandedEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+
+        return NextResponse.json(expandedEvents)
     } catch (error) {
         console.error("Error fetching events:", error)
         return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 })

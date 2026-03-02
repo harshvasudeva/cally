@@ -1,23 +1,28 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import FullCalendar from "@fullcalendar/react"
+import { useEffect, useState, useCallback, useMemo } from "react"
+import dynamic from "next/dynamic"
+import { CalendarEvent, Event, Appointment } from "@/types"
+
+// Code-split FullCalendar (~200KB) — only loaded client-side
+const FullCalendar = dynamic(() => import("@fullcalendar/react"), { ssr: false, loading: () => <div className="flex items-center justify-center h-96"><div className="loading-spinner" /></div> })
 import dayGridPlugin from "@fullcalendar/daygrid"
 import timeGridPlugin from "@fullcalendar/timegrid"
 import listPlugin from "@fullcalendar/list"
 import interactionPlugin from "@fullcalendar/interaction"
-import { CalendarEvent, Event, Appointment } from "@/types"
 
 interface CalendarViewProps {
     onEventClick?: (event: CalendarEvent) => void
     onDateSelect?: (start: Date, end: Date) => void
     onEventDrop?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void
+    refreshKey?: number
 }
 
 export default function CalendarView({
     onEventClick,
     onDateSelect,
-    onEventDrop
+    onEventDrop,
+    refreshKey
 }: CalendarViewProps) {
     const [events, setEvents] = useState<CalendarEvent[]>([])
     const [view, setView] = useState<"dayGridMonth" | "timeGridWeek" | "timeGridDay" | "listWeek">("dayGridMonth")
@@ -69,9 +74,9 @@ export default function CalendarView({
 
     useEffect(() => {
         fetchEvents()
-    }, [fetchEvents])
+    }, [fetchEvents, refreshKey])
 
-    const handleEventClick = (info: any) => {
+    const handleEventClick = useCallback((info: any) => {
         if (onEventClick) {
             onEventClick({
                 id: info.event.id,
@@ -83,15 +88,15 @@ export default function CalendarView({
                 extendedProps: info.event.extendedProps
             })
         }
-    }
+    }, [onEventClick])
 
-    const handleDateSelect = (info: any) => {
+    const handleDateSelect = useCallback((info: any) => {
         if (onDateSelect) {
             onDateSelect(info.start, info.end)
         }
-    }
+    }, [onDateSelect])
 
-    const handleEventDrop = async (info: any) => {
+    const handleEventDrop = useCallback(async (info: any) => {
         if (info.event.extendedProps.type !== "event") {
             info.revert()
             return
@@ -111,7 +116,12 @@ export default function CalendarView({
             console.error("Error updating event:", error)
             info.revert()
         }
-    }
+    }, [fetchEvents])
+
+    // Memoize static config objects to prevent FullCalendar re-renders
+    const plugins = useMemo(() => [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin], [])
+    const headerToolbar = useMemo(() => ({ left: "prev,next today", center: "title", right: "" }), [])
+    const eventTimeFormat = useMemo(() => ({ hour: "2-digit" as const, minute: "2-digit" as const, meridiem: "short" as const }), [])
 
     if (loading) {
         return (
@@ -154,26 +164,18 @@ export default function CalendarView({
             {/* Calendar */}
             <div className="card">
                 <FullCalendar
-                    plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-                    initialView={view}
                     key={view}
+                    plugins={plugins}
+                    initialView={view}
                     events={events}
                     selectable={true}
                     editable={true}
                     eventClick={handleEventClick}
                     select={handleDateSelect}
                     eventDrop={handleEventDrop}
-                    headerToolbar={{
-                        left: "prev,next today",
-                        center: "title",
-                        right: ""
-                    }}
+                    headerToolbar={headerToolbar}
                     height="auto"
-                    eventTimeFormat={{
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        meridiem: "short"
-                    }}
+                    eventTimeFormat={eventTimeFormat}
                     slotMinTime="06:00:00"
                     slotMaxTime="22:00:00"
                     nowIndicator={true}
