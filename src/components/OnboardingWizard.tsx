@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import {
     Sparkles,
     Globe,

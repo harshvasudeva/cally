@@ -4,82 +4,237 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
-model User {
-  id            String         @id @default(cuid())
-  email         String?        @unique
-  emailVerified DateTime?
-  password      String?
-  name          String?
-  role          String         @default("USER")
-  timezone      String         @default("UTC")
-  slug          String?        @unique
-  avatarUrl     String?
-  image         String?
-  discordId     String?        @unique
+// ============================================================================
+// IDENTITY & ACCESS (better-auth core models)
+// ============================================================================
 
-  // Security: Account lockout (#11)
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  image         String?
+  // Cally-specific profile
+  slug          String?   @unique
+  role          String    @default("USER") // USER | ADMIN
+  timezone      String    @default("UTC")
+  theme         String    @default("dark")
+  country       String?
+  avatarUrl     String?
+  discordId     String?   @unique
+  icalToken     String?   @unique
+  notificationPrefs Json?
+  onboardingCompleted Boolean @default(false)
+
+  // Security: account lockout (Roadmap #11)
   failedLoginAttempts Int      @default(0)
   lockedUntil         DateTime?
+  twoFactorEnabled    Boolean  @default(false)
 
-  // Theme preference (#76)
-  theme         String         @default("dark")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  // Country code (ISO 3166-1 alpha-2) for holiday detection
-  country       String?
-
-  accounts      Account[]
+  // better-auth relations
   sessions      Session[]
+  accounts      Account[]
+  twoFactor     TwoFactor?
+  passkeys      Passkey[]
 
-  events        Event[]
-  availability  Availability[]
-  appointments  Appointment[]  @relation("Host")
-  guestAppointments Appointment[] @relation("Guest")
-  appointmentTypes AppointmentType[]
-  dateOverrides DateOverride[]
-  auditLogs     AuditLog[]
-  calendarStreams CalendarStream[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  // Org / multi-tenant
+  ownedOrganizations Organization[] @relation("OrgOwner")
+  members            Member[]
+  invitationsSent    Invitation[]   @relation("InvitedBy")
 
-  // Onboarding (#83)
-  onboardingCompleted Boolean  @default(false)
+  // Cally domain
+  events            Event[]
+  availability      Availability[]
+  appointments      Appointment[]   @relation("Host")
+  guestAppointments Appointment[]   @relation("Guest")
+  appointmentTypes  AppointmentType[]
+  dateOverrides     DateOverride[]
+  calendarStreams   CalendarStream[]
+  calendarAccounts  CalendarAccount[]
+  aiCredentials     UserAICredential[]
+  aiConversations   AIConversation[]
+  apiKeys           ApiKey[]
+  auditLogs         AuditLog[]
 
-  // iCal subscription token (#53) — private URL for calendar apps
-  icalToken     String?        @unique
-
-  // Notification preferences (JSON) (#6)
-  notificationPrefs String?    // JSON: { emailBooking, emailCancellation, emailReminder, ... }
+  @@index([email])
+  @@index([slug])
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
+  id                    String   @id @default(cuid())
+  userId                String
+  // better-auth fields
+  accountId             String   // OAuth subject id, or email for credentials
+  providerId            String   // "credential" | "google" | "github" | etc.
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?  // bcrypt hash for credentials provider
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  @@unique([providerId, accountId])
+  @@index([userId])
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  // org plugin: which org is this session "scoped to"
+  activeOrganizationId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String   // email or other identifier
+  value      String   // OTP code or token
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, value])
+  @@index([identifier])
+}
+
+model TwoFactor {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  secret      String  // encrypted TOTP secret
+  backupCodes String  // JSON array of hashed backup codes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Passkey {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String?  // user-friendly device name
+  credentialId String   @unique
+  publicKey    String
+  counter      BigInt   @default(0)
+  deviceType   String?
+  backedUp     Boolean  @default(false)
+  transports   String?  // JSON array
+  aaguid       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================================
+// MULTI-TENANCY (better-auth organization plugin)
+// ============================================================================
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logo        String?
+  metadata    Json?
+  plan        String   @default("free") // free | pro | business | enterprise
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User         @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     Member[]
+  invitations Invitation[]
+  teams       Team[]
+
+  @@index([ownerId])
+  @@index([slug])
+}
+
+model Member {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String   @default("member") // owner | admin | member
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Invitation {
+  id             String   @id @default(cuid())
+  email          String
+  organizationId String
+  role           String   @default("member")
+  status         String   @default("pending") // pending | accepted | expired | revoked
+  expiresAt      DateTime
+  invitedById    String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+model Team {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  schedulingMode String   @default("collective") // collective | round_robin
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+  appointmentTypes AppointmentType[]
+
+  @@index([organizationId])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  priority  Int      @default(0) // for round-robin ordering
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+}
+
+// ============================================================================
+// CALENDAR CORE (preserved from v1)
+// ============================================================================
 
 model Event {
   id          String   @id @default(cuid())
@@ -97,7 +252,6 @@ model Event {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Performance indexes (#40)
   @@index([userId])
   @@index([start, end])
 }
@@ -114,52 +268,34 @@ model Availability {
   @@index([userId])
 }
 
-model Appointment {
-  id              String          @id @default(cuid())
-  title           String
-  start           DateTime
-  end             DateTime
-  status          String          @default("PENDING")
-  guestEmail      String
-  guestName       String
-  guestPhone      String?
-  guestNotes      String?
-  formData        String?
-  meetingLink     String?
-  negotiationNote String?
-  originalTime    DateTime?
-  userId          String
-  user            User            @relation("Host", fields: [userId], references: [id], onDelete: Cascade)
-  guestUserId     String?
-  guestUser       User?           @relation("Guest", fields: [guestUserId], references: [id])
-  appointmentTypeId String?
-  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  // Performance indexes (#40)
-  @@index([userId])
-  @@index([guestEmail])
-  @@index([status])
-  @@index([start, end])
-}
-
 model AppointmentType {
-  id           String        @id @default(cuid())
+  id           String  @id @default(cuid())
   name         String
   slug         String
   duration     Int
-  bufferBefore Int           @default(0)
-  bufferAfter  Int           @default(0)
-  color        String        @default("#8b5cf6")
+  bufferBefore Int     @default(0)
+  bufferAfter  Int     @default(0)
+  color        String  @default("#8b5cf6")
   description  String?
   location     String?
-  formFields   String?
-  isActive     Boolean       @default(true)
+  formFields   Json?
+  isActive     Boolean @default(true)
+  minNotice    Int     @default(0)
+  maxPerDay    Int     @default(0)
 
-  // Advanced scheduling (#63, #64)
-  minNotice    Int           @default(0)    // Minutes of advance notice required
-  maxPerDay    Int           @default(0)    // Max bookings per day (0 = unlimited)
+  // v2: payments
+  priceCents      Int      @default(0)
+  currency        String   @default("USD")
+  requiresPayment Boolean  @default(false)
+  paymentType     String   @default("full") // full | deposit
+
+  // v2: meeting provider
+  meetingProvider String   @default("none") // none | meet | zoom | teams | in_person | phone | custom
+  customLocation  String?
+
+  // v2: team scheduling
+  teamId       String?
+  team         Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -169,16 +305,55 @@ model AppointmentType {
 
   @@unique([userId, slug])
   @@index([userId])
+  @@index([teamId])
 }
 
-// Manual date overrides / blocking (#75)
+model Appointment {
+  id              String   @id @default(cuid())
+  title           String
+  start           DateTime
+  end             DateTime
+  status          String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED | COMPLETED
+  guestEmail      String
+  guestName       String
+  guestPhone      String?
+  guestNotes      String?
+  formData        Json?
+  meetingLink     String?
+  meetingProvider String?
+  negotiationNote String?
+  originalTime    DateTime?
+
+  // v2: payment
+  paymentStatus         String? // pending | paid | refunded | failed
+  stripePaymentIntentId String?
+
+  // v2: AI insights (post-meeting)
+  aiSummary    String?
+  aiTranscript String?
+
+  userId            String
+  user              User             @relation("Host", fields: [userId], references: [id], onDelete: Cascade)
+  guestUserId       String?
+  guestUser         User?            @relation("Guest", fields: [guestUserId], references: [id])
+  appointmentTypeId String?
+  appointmentType   AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([guestEmail])
+  @@index([status])
+  @@index([start, end])
+}
+
 model DateOverride {
   id        String   @id @default(cuid())
-  date      DateTime // The specific date
-  isBlocked Boolean  @default(true) // true = blocked, false = custom hours
-  startTime String?  // Custom start time (if not blocked)
-  endTime   String?  // Custom end time (if not blocked)
-  reason    String?  // Optional reason for the block
+  date      DateTime
+  isBlocked Boolean  @default(true)
+  startTime String?
+  endTime   String?
+  reason    String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -187,31 +362,177 @@ model DateOverride {
   @@index([userId])
 }
 
-// Calendar stream subscriptions (external iCal feeds, sports, holidays)
 model CalendarStream {
-  id          String   @id @default(cuid())
-  name        String   // Display name e.g. "F1 2026 Calendar"
-  url         String   // iCal feed URL
-  color       String   @default("#6366f1") // Display color on calendar
-  category    String   @default("other") // sports | holidays | other
-  isActive    Boolean  @default(true)
-  lastSyncAt  DateTime?
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  name       String
+  url        String
+  color      String    @default("#6366f1")
+  category   String    @default("other")
+  isActive   Boolean   @default(true)
+  lastSyncAt DateTime?
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([userId, url])
   @@index([userId])
 }
 
-// Audit logging (#4)
+// ============================================================================
+// EXTERNAL CALENDAR SYNC (v2 NEW)
+// ============================================================================
+
+model CalendarAccount {
+  id                  String    @id @default(cuid())
+  userId              String
+  provider            String    // google | microsoft | apple_caldav | generic_caldav
+  externalAccountId   String    // Google: subject; MS: oid; CalDAV: principal URL
+  email               String
+  displayName         String?
+  // Encrypted tokens
+  accessTokenEnc      String?
+  refreshTokenEnc     String?
+  tokenExpiresAt      DateTime?
+  // Sync state
+  lastSyncAt          DateTime?
+  syncStatus          String    @default("idle") // idle | syncing | error | disconnected
+  syncError           String?
+  // Push notification (Google watch channel)
+  webhookChannelId    String?
+  webhookResourceId   String?
+  webhookExpiresAt    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendars ExternalCalendar[]
+
+  @@unique([userId, provider, externalAccountId])
+  @@index([userId])
+}
+
+model ExternalCalendar {
+  id                String  @id @default(cuid())
+  calendarAccountId String
+  externalId        String
+  summary           String
+  color             String?
+  timezone          String?
+  isPrimary         Boolean @default(false)
+  selected          Boolean @default(true)  // include in conflict detection
+  writable          Boolean @default(true)
+  // Per-calendar sync token (for incremental sync)
+  syncToken         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  account CalendarAccount @relation(fields: [calendarAccountId], references: [id], onDelete: Cascade)
+  events  ExternalEvent[]
+
+  @@unique([calendarAccountId, externalId])
+  @@index([calendarAccountId])
+}
+
+model ExternalEvent {
+  id                 String   @id @default(cuid())
+  externalCalendarId String
+  externalId         String
+  iCalUid            String?
+  summary            String?
+  description        String?
+  location           String?
+  start              DateTime
+  end                DateTime
+  allDay             Boolean  @default(false)
+  recurrence         String?
+  status             String   @default("confirmed") // confirmed | tentative | cancelled
+  etag               String?
+  htmlLink           String?
+  // Loop-prevention: if this event was created by us, set this
+  callyAppointmentId String?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  calendar ExternalCalendar @relation(fields: [externalCalendarId], references: [id], onDelete: Cascade)
+
+  @@unique([externalCalendarId, externalId])
+  @@index([externalCalendarId])
+  @@index([start, end])
+  @@index([callyAppointmentId])
+}
+
+// ============================================================================
+// AI LAYER (v2 NEW)
+// ============================================================================
+
+model UserAICredential {
+  id              String   @id @default(cuid())
+  userId          String
+  providerId      String   // "openai" | "anthropic" | "google" | "groq" | "mistral" | "openrouter" | "ollama"
+  apiKeyEnc       String   // encrypted
+  defaultModel    String
+  baseUrl         String?  // for ollama, openrouter, custom
+  label           String?
+  isActive        Boolean  @default(true)
+  lastTestedAt    DateTime?
+  lastTestedOk    Boolean?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations AIConversation[]
+
+  @@unique([userId, providerId, label])
+  @@index([userId])
+}
+
+model AIConversation {
+  id           String   @id @default(cuid())
+  userId       String
+  credentialId String?
+  title        String   @default("New chat")
+  pinned       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential UserAICredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  messages   AIMessage[]
+
+  @@index([userId])
+}
+
+model AIMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // user | assistant | system | tool
+  content        String
+  toolCalls      Json?
+  toolResults    Json?
+  model          String?
+  provider       String?
+  inputTokens    Int?
+  outputTokens   Int?
+  costCents      Int?
+  latencyMs      Int?
+  createdAt      DateTime @default(now())
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// ============================================================================
+// MISC (preserved + minor additions)
+// ============================================================================
+
 model AuditLog {
   id        String   @id @default(cuid())
-  action    String   // e.g., "LOGIN", "SETTING_CHANGE", "APPOINTMENT_DELETE"
-  entity    String?  // e.g., "Appointment", "Settings", "User"
-  entityId  String?  // ID of the affected entity
-  details   String?  // JSON string with additional context
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
   ipAddress String?
   userAgent String?
   userId    String?
@@ -226,70 +547,41 @@ model AuditLog {
 model Settings {
   id              String  @id @default(cuid())
   siteName        String  @default("Cally")
-  siteDescription String  @default("Self-hosted calendar and scheduling")
+  siteDescription String  @default("All-in-one scheduling")
   primaryColor    String  @default("#3b82f6")
   logoUrl         String?
-
-  // Domain & SSL
-  fqdn            String?  // e.g. cal.example.com
-  sslCertPath     String?  // Path to SSL cert file
-  sslKeyPath      String?  // Path to SSL key file
-  sslMode         String   @default("auto") // auto | custom | none
-
-  // Email (SMTP)
+  fqdn            String?
+  sslMode         String   @default("auto")
   emailFrom       String?
   smtpHost        String?
   smtpPort        Int?
   smtpUser        String?
   smtpPass        String?
-
-  // Discord Bot
   discordBotToken String?
   discordClientId String?
-
-  // Webhooks
   webhookUrl      String?
   webhookSecret   String?
-  webhookEvents   String?  // JSON array of event types to send
-
+  webhookEvents   Json?
   allowRegistration Boolean @default(true)
-
-  // Security (#11)
   maxLoginAttempts  Int     @default(5)
-  lockoutDuration   Int     @default(15) // minutes
+  lockoutDuration   Int     @default(15)
   requireEmailVerification Boolean @default(false)
-  ipWhitelist       String?  // Comma-separated CIDR ranges for admin access
-
-  // Maintenance mode (#26)
+  ipWhitelist       String?
   maintenanceMode   Boolean @default(false)
-
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
 
-// Email verification tokens
-model VerificationToken {
-  id         String   @id @default(cuid())
-  token      String   @unique
-  email      String
-  userId     String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-
-  @@index([token])
-  @@index([email])
-}
-
-// API Keys for programmatic access
 model ApiKey {
   id          String   @id @default(cuid())
   name        String
-  keyHash     String   @unique // bcrypt hash of the key
-  keyPrefix   String   // First 8 chars for identification
-  permissions String   @default("read") // read | write | admin
+  keyHash     String   @unique
+  keyPrefix   String
+  permissions String   @default("read")
   lastUsedAt  DateTime?
   expiresAt   DateTime?
   userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
   @@index([keyHash])

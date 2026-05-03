@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import { User } from "@/types"
 import { format, parseISO } from "date-fns"

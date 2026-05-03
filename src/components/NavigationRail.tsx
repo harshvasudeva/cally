@@ -3,7 +3,7 @@
 import { useState, memo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import {
   Calendar,
   CalendarCheck,

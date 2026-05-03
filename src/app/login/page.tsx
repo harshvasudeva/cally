@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { signIn, getProviders, useSession } from "next-auth/react"
+import { signIn, getProviders, useSession } from "@/lib/auth-react-compat"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Calendar, Eye, EyeOff, Mail, Lock } from "lucide-react"

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import dynamic from "next/dynamic"
 import CalendarView from "@/components/calendar/CalendarView"

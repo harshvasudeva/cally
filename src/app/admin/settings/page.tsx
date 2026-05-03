@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import {
     Settings, Save, Mail, Check, Shield, AlertTriangle,

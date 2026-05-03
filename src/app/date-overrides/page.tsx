@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import { CalendarOff, Plus, Trash2, Clock, X, Globe, Download, Check, AlertCircle } from "lucide-react"
 import { format, parseISO } from "date-fns"

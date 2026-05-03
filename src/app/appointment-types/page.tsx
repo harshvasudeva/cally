@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import { AppointmentType } from "@/types"
 import { Clock, Plus, Edit2, Trash2, Link2, X, AlertCircle, Hash } from "lucide-react"

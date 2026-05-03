@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
+import { getServerSession } from "@/lib/server-session"
 import { authOptions } from "@/lib/auth"
 
 // Calendarific API response types

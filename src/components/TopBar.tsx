@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import Link from "next/link"
-import { useSession, signOut } from "next-auth/react"
+import { useSession, signOut } from "@/lib/auth-react-compat"
 import { useRouter } from "next/navigation"
 import { Calendar, Search, Bell, LogOut, Settings, User, Command } from "lucide-react"
 import Avatar from "./ui/Avatar"

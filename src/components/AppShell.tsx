@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState, useCallback, type ReactNode } from "react"
 import TopBar from "./TopBar"

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useSession } from "next-auth/react"
+import { useSession } from "@/lib/auth-react-compat"
 import { redirect } from "next/navigation"
 import { Shield, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { format, parseISO } from "date-fns"

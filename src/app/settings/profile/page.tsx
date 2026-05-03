@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession, signIn } from "next-auth/react"
+import { useSession, signIn } from "@/lib/auth-react-compat"
 import { useState, useEffect, useCallback } from "react"
 import { redirect } from "next/navigation"
 import ConflictResolver from "@/components/calendar/ConflictResolver"

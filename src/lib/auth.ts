@@ -1,262 +1,85 @@
-import { NextAuthOptions } from "next-auth"
-import { PrismaAdapter } from "@auth/prisma-adapter"
-import CredentialsProvider from "next-auth/providers/credentials"
-import GoogleProvider from "next-auth/providers/google"
-import DiscordProvider from "next-auth/providers/discord"
-import TwitterProvider from "next-auth/providers/twitter"
-import FacebookProvider from "next-auth/providers/facebook"
-import AppleProvider from "next-auth/providers/apple"
-import bcrypt from "bcryptjs"
-import prisma from "./prisma"
-import { env } from "./env"
-import { createAuditLog } from "./audit"
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { organization, twoFactor } from "better-auth/plugins";
+import prisma from "./prisma";
 
-export const authOptions: NextAuthOptions = {
-    adapter: PrismaAdapter(prisma),
-    providers: [
-        // Email + Password login
-        CredentialsProvider({
-            name: "credentials",
-            credentials: {
-                email: { label: "Email", type: "email" },
-                password: { label: "Password", type: "password" },
-            },
-            async authorize(credentials) {
-                if (!credentials?.email || !credentials?.password) {
-                    throw new Error("Email and password are required")
-                }
+// ----- Conditionally enable each social provider only if configured -----
+function socialProviders() {
+  const sp: Record<string, { clientId: string; clientSecret: string }> = {};
+  const providers = [
+    ["google", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+    ["github", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
+    ["discord", "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"],
+    ["microsoft", "MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+    ["apple", "APPLE_CLIENT_ID", "APPLE_CLIENT_SECRET"],
+    ["facebook", "FACEBOOK_CLIENT_ID", "FACEBOOK_CLIENT_SECRET"],
+    ["twitter", "TWITTER_CLIENT_ID", "TWITTER_CLIENT_SECRET"],
+    ["linkedin", "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
+  ] as const;
 
-                const email = credentials.email.trim().toLowerCase()
-                const user = await prisma.user.findUnique({ where: { email } })
-
-                if (!user || !user.password) {
-                    throw new Error("Invalid email or password")
-                }
-
-                // Check account lockout
-                if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
-                    const minutes = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000)
-                    throw new Error(`Account locked. Try again in ${minutes} minute(s).`)
-                }
-
-                // Verify password
-                const isValid = await bcrypt.compare(credentials.password, user.password)
-
-                if (!isValid) {
-                    // Increment failed attempts
-                    const settings = await prisma.settings.findFirst()
-                    const maxAttempts = settings?.maxLoginAttempts ?? 5
-                    const lockoutMinutes = settings?.lockoutDuration ?? 15
-                    const newAttempts = user.failedLoginAttempts + 1
-
-                    const updateData: Record<string, unknown> = {
-                        failedLoginAttempts: newAttempts,
-                    }
-
-                    if (newAttempts >= maxAttempts) {
-                        updateData.lockedUntil = new Date(Date.now() + lockoutMinutes * 60 * 1000)
-                        await createAuditLog({
-                            action: "ACCOUNT_LOCKED",
-                            entity: "User",
-                            entityId: user.id,
-                            details: { attempts: newAttempts, lockoutMinutes },
-                            userId: user.id,
-                        })
-                    }
-
-                    await prisma.user.update({
-                        where: { id: user.id },
-                        data: updateData,
-                    })
-
-                    await createAuditLog({
-                        action: "LOGIN_FAILED",
-                        entity: "User",
-                        entityId: user.id,
-                        details: { email, attempt: newAttempts },
-                        userId: user.id,
-                    })
-
-                    throw new Error("Invalid email or password")
-                }
-
-                // Successful login — reset failed attempts
-                if (user.failedLoginAttempts > 0 || user.lockedUntil) {
-                    await prisma.user.update({
-                        where: { id: user.id },
-                        data: { failedLoginAttempts: 0, lockedUntil: null },
-                    })
-                }
-
-                await createAuditLog({
-                    action: "LOGIN",
-                    entity: "User",
-                    entityId: user.id,
-                    details: { method: "credentials" },
-                    userId: user.id,
-                })
-
-                return {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    image: user.image,
-                }
-            },
-        }),
-        // Only register providers whose credentials are configured
-        ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-            ? [
-                GoogleProvider({
-                    clientId: env.GOOGLE_CLIENT_ID,
-                    clientSecret: env.GOOGLE_CLIENT_SECRET,
-                }),
-            ]
-            : []),
-        ...(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET
-            ? [
-                DiscordProvider({
-                    clientId: env.DISCORD_CLIENT_ID,
-                    clientSecret: env.DISCORD_CLIENT_SECRET,
-                }),
-            ]
-            : []),
-        ...(env.TWITTER_CLIENT_ID && env.TWITTER_CLIENT_SECRET
-            ? [
-                TwitterProvider({
-                    clientId: env.TWITTER_CLIENT_ID,
-                    clientSecret: env.TWITTER_CLIENT_SECRET,
-                    version: "2.0",
-                }),
-            ]
-            : []),
-        ...(env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET
-            ? [
-                FacebookProvider({
-                    clientId: env.FACEBOOK_CLIENT_ID,
-                    clientSecret: env.FACEBOOK_CLIENT_SECRET,
-                }),
-            ]
-            : []),
-        ...(env.APPLE_ID && env.APPLE_SECRET
-            ? [
-                AppleProvider({
-                    clientId: env.APPLE_ID,
-                    clientSecret: env.APPLE_SECRET,
-                }),
-            ]
-            : []),
-    ],
-    session: {
-        strategy: "jwt",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-    },
-    cookies: {
-        sessionToken: {
-            // __Secure- prefix requires secure:true — only use in production (HTTPS)
-            name: env.NODE_ENV === "production"
-                ? "__Secure-next-auth.session-token"
-                : "next-auth.session-token",
-            options: {
-                httpOnly: true,
-                sameSite: "lax",
-                path: "/",
-                secure: env.NODE_ENV === "production",
-            },
-        },
-    },
-    callbacks: {
-        async session({ session, token }) {
-            if (session.user && token.sub) {
-                session.user.id = token.sub
-            }
-            // Use cached data from JWT token instead of querying DB on every request
-            if (token) {
-                (session.user as any).role = token.role;
-                (session.user as any).slug = token.slug;
-                (session.user as any).timezone = token.timezone;
-                (session.user as any).theme = token.theme;
-                (session.user as any).onboardingCompleted = token.onboardingCompleted;
-            }
-            return session
-        },
-        async jwt({ token, user, trigger }) {
-            // Initial sign in - populate token with user data
-            if (user) {
-                const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-                if (dbUser) {
-                    token.role = dbUser.role;
-                    token.slug = dbUser.slug;
-                    token.timezone = dbUser.timezone;
-                    token.theme = dbUser.theme;
-                    token.onboardingCompleted = dbUser.onboardingCompleted;
-
-                    // Generate slug if missing (first OAuth login via Adapter)
-                    if (!dbUser.slug) {
-                        const baseSlug = (user.name || "user").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
-                        let slug = baseSlug
-                        let counter = 1
-                        while (await prisma.user.findUnique({ where: { slug } })) {
-                            slug = `${baseSlug}-${counter}`
-                            counter++
-                        }
-                        // First user becomes admin
-                        const count = await prisma.user.count();
-                        const role = count === 1 ? "ADMIN" : "USER";
-
-                        await prisma.user.update({
-                            where: { id: user.id },
-                            data: {
-                                slug,
-                                role: dbUser.role === "USER" ? role : dbUser.role,
-                            }
-                        });
-
-                        token.slug = slug;
-                        token.role = dbUser.role === "USER" ? role : dbUser.role;
-
-                        // Initialize Availability/Types if missing
-                        const types = await prisma.appointmentType.count({ where: { userId: user.id } });
-                        if (types === 0) {
-                            await prisma.appointmentType.create({
-                                data: {
-                                    name: "30 Minute Meeting",
-                                    slug: "30min",
-                                    duration: 30,
-                                    userId: user.id
-                                }
-                            });
-                            await prisma.availability.createMany({
-                                data: [1, 2, 3, 4, 5].map(d => ({
-                                    userId: user.id,
-                                    dayOfWeek: d,
-                                    startTime: "09:00",
-                                    endTime: "17:00"
-                                }))
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Refresh token data when session is updated (e.g. profile changes)
-            if (trigger === "update" && token.sub) {
-                const freshUser = await prisma.user.findUnique({ where: { id: token.sub } });
-                if (freshUser) {
-                    token.role = freshUser.role;
-                    token.slug = freshUser.slug;
-                    token.timezone = freshUser.timezone;
-                    token.theme = freshUser.theme;
-                    token.onboardingCompleted = freshUser.onboardingCompleted;
-                }
-            }
-
-            return token
-        }
-    },
-    pages: {
-        signIn: "/login",
-        error: "/login"
-    },
-    secret: env.NEXTAUTH_SECRET,
+  for (const [name, idEnv, secretEnv] of providers) {
+    const id = process.env[idEnv];
+    const secret = process.env[secretEnv];
+    if (id && secret) sp[name] = { clientId: id, clientSecret: secret };
+  }
+  return sp;
 }
+
+export const auth = betterAuth({
+  appName: "Cally",
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  secret: process.env.BETTER_AUTH_SECRET ?? "dev-only-secret-change-me",
+  database: prismaAdapter(prisma, { provider: "postgresql" }),
+
+  emailAndPassword: {
+    enabled: true,
+    autoSignIn: true,
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
+    requireEmailVerification: false, // togglable via Settings later
+  },
+
+  socialProviders: socialProviders(),
+
+  user: {
+    additionalFields: {
+      slug: { type: "string", required: false, input: false },
+      role: { type: "string", defaultValue: "USER", input: false },
+      timezone: { type: "string", defaultValue: "UTC" },
+      theme: { type: "string", defaultValue: "dark" },
+      country: { type: "string", required: false },
+      onboardingCompleted: { type: "boolean", defaultValue: false, input: false },
+    },
+  },
+
+  session: {
+    expiresIn: 60 * 60 * 24 * 30, // 30 days
+    updateAge: 60 * 60 * 24, // refresh once per day
+    cookieCache: { enabled: true, maxAge: 60 * 5 },
+  },
+
+  advanced: {
+    cookiePrefix: "cally",
+    useSecureCookies: process.env.NODE_ENV === "production",
+    crossSubDomainCookies: { enabled: false },
+  },
+
+  plugins: [
+    organization({
+      allowUserToCreateOrganization: true,
+      organizationLimit: 10,
+      membershipLimit: 100,
+      invitationExpiresIn: 60 * 60 * 24 * 7,
+    }),
+    twoFactor({
+      issuer: "Cally",
+    }),
+  ],
+
+  trustedOrigins: [
+    process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+    "http://localhost:3000",
+  ],
+});
+
+export type Session = typeof auth.$Infer.Session;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
-import { useSession, signIn } from "next-auth/react"
+import { useSession, signIn } from "@/lib/auth-react-compat"
 import Link from "next/link"
 import { format, parseISO, addDays } from "date-fns"
 import { Calendar, Clock, ChevronLeft, ChevronRight, Check, User, Mail, Phone, FileText, Lock, ArrowRight, Globe, MapPin } from "lucide-react"
