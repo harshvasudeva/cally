@@ -83,3 +83,8 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+// Compat: legacy pages still `import { authOptions } from "@/lib/auth"`.
+// authOptions is a NextAuth construct; with better-auth it's no longer used.
+// Export an empty stub so those imports keep compiling.
+export const authOptions = {} as const;

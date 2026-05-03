@@ -1,0 +1,49 @@
+{
+  "summary": "Cally v2 Phase 1 backend test suite: 33/33 tests passed covering BullMQ worker + Redis, Google Calendar webhook, Organizations/Teams/Invitations CRUD + RBAC, Stripe 503-by-design, AI chat error paths, Phase 1 page rendering (/organizations, /ai), Phase 0 regression, and compat shim (/api/user/profile). Worker successfully consumes a live renew-channel job enqueued via the BullMQ Queue API within ~1s. Middleware now correctly passes /api/* through so unauth API calls return clean JSON 401 (previous iteration's complaint is resolved).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/organizations (POST)",
+        "issue": "Response body is the raw Organization object (no top-level `organization` key wrapping). Spec wording says 'creates Organization' which matches, but downstream tests need to handle either shape. Recommend wrapping in { organization } for consistency with invitation endpoint which returns { invitation, acceptUrl }."
+      },
+      {
+        "endpoint": "/api/integrations/google/webhook",
+        "issue": "Does not verify the X-Goog-Channel-Token against account.webhookToken — only looks up by channelId. A malicious actor who guesses/learns a channelId (non-secret) could trigger delta-sync spam. Recommend validating channel token equals stored token before enqueueing."
+      },
+      {
+        "endpoint": "/api/organizations/[id]/invitations (POST)",
+        "issue": "No dedup check — submitting the same email twice creates two pending invitations. Also no email dispatch wiring (acceptUrl is returned to the caller only). Acceptable for MVP but flag for UX."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_cally_phase1.py",
+    "/app/backend/tests/test_cally_backend.py",
+    "/app/test_reports/pytest/phase1_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Wrap POST /api/organizations response in { organization } for shape consistency with invitations/teams endpoints.",
+    "(Security) Validate X-Goog-Channel-Token against stored account.webhookToken in /api/integrations/google/webhook before enqueueing sync jobs.",
+    "(UX) Dedupe pending invitations per (orgId,email) and wire an actual email send (currently acceptUrl is only returned to the API caller)."
+  ],
+  "critical_code_review_comments": [
+    "organizations POST: slug uniqueness loop is sequential await inside a while — under high concurrency two requests could both resolve to the same finalSlug before either writes. A unique DB index on slug will guard this but could produce a 500 on the losing side; catch Prisma P2002 and retry.",
+    "invitations: HMAC signature is truncated to 24 hex chars (96 bits) — acceptable, but verify the accept route validates the hmac constant-time (timingSafeEqual) rather than === to avoid timing leaks.",
+    "stripe/webhook: uses AuditLog as an idempotency store — this is fine, but add a unique index on (action, entityId) to protect against the race where two webhook deliveries race the findFirst+create window.",
+    "worker logs show only 'calendar-sync renew-channel id= <n>' without the actual job payload (e.g., accountId). Include accountId in log for traceability during incidents.",
+    "ai/chat: returns 400 JSON for 'no credential' but returns plain-text 'Unauthorized' body for 401. Make both JSON for API consistency.",
+    "proxy.ts now passes /api/* through — good. Consider also emitting 'WWW-Authenticate: Bearer' on 401 responses for standards compliance."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cally_phase1.py"
+  ],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "not tested (per request)"},
+  "test_credentials": "Each run creates owner_<rand>@cally.local and member_<rand>@cally.local with TestPass123. Existing admin@cally.local / TestPass123 is preserved.",
+  "seed_data_creation": "Each run creates 2 users, 2-3 Organizations, 1 Team, 1+ Invitations, 1 OpenAI AI credential. All rows remain in Postgres (no cleanup); data is harmless test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 1 tests live at /app/backend/tests/test_cally_phase1.py. Phase 0 tests at /app/backend/tests/test_cally_backend.py. Run with `cd /app && python -m pytest backend/tests/ -v`. The worker-enqueue test writes /app/.enqueue_test_<marker>.cjs and deletes it after (needs to be inside /app so node resolves bullmq/ioredis). Middleware (proxy.ts) now correctly lets /api/* through to route handlers — API endpoints return JSON 401 (not 307 to /login) for unauth. Stripe tests assert 503-by-design (STRIPE_SECRET_KEY blank in .env). If STRIPE_SECRET_KEY is later populated, TestStripe will fail and must be updated to check 400 (validation error) instead.",
+  "rca_of_the_issue": "N/A — no functional failures. One test-infra issue encountered and fixed: the BullMQ enqueue snippet needed to run from /app (not /tmp) so Node could resolve bullmq/ioredis from /app/node_modules."
+}
