@@ -26,6 +26,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Let API routes handle their own auth so they can return clean JSON 401s
+  // instead of HTML redirects. Public API paths above are still public.
+  if (pathname.startsWith("/api/")) {
+    return securityHeaders(NextResponse.next());
+  }
+
   // ---- Lightweight session presence check ----
   // We only check for the better-auth session-token cookie here for redirects.
   // Full session validation happens server-side in route handlers / pages.
@@ -47,7 +53,10 @@ export async function proxy(request: NextRequest) {
   }
 
   // ---- Security headers ----
-  const response = NextResponse.next();
+  return securityHeaders(NextResponse.next());
+}
+
+function securityHeaders(response: NextResponse): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
   const scriptSrc = isDev

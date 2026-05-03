@@ -89,27 +89,25 @@ export async function POST(request: NextRequest) {
     const userCount = await prisma.user.count();
     const role = userCount === 1 ? "ADMIN" : "USER";
 
-    await prisma.user.update({
-      where: { id: newUser.id },
-      data: {
-        slug,
-        role,
-        timezone: "UTC",
-      },
-    });
-
-    // Default availability (Mon–Fri 9-17) + default appointment type
-    await prisma.availability.createMany({
-      data: [1, 2, 3, 4, 5].map((d) => ({
-        userId: newUser.id,
-        dayOfWeek: d,
-        startTime: "09:00",
-        endTime: "17:00",
-      })),
-    });
-    await prisma.appointmentType.create({
-      data: { name: "30 Minute Meeting", slug: "30min", duration: 30, userId: newUser.id },
-    });
+    // Wrap post-signup setup in a single transaction so failures don't leave
+    // an inconsistent user (no slug, no availability, no appointment type).
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: newUser.id },
+        data: { slug, role, timezone: "UTC" },
+      }),
+      prisma.availability.createMany({
+        data: [1, 2, 3, 4, 5].map((d) => ({
+          userId: newUser.id,
+          dayOfWeek: d,
+          startTime: "09:00",
+          endTime: "17:00",
+        })),
+      }),
+      prisma.appointmentType.create({
+        data: { name: "30 Minute Meeting", slug: "30min", duration: 30, userId: newUser.id },
+      }),
+    ]);
 
     await createAuditLog({
       action: "REGISTER",
