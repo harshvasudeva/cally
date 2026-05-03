@@ -57,27 +57,37 @@ export async function POST(req: NextRequest) {
     .replace(/^-|-$/g, "")
     .substring(0, 40) || `org-${Date.now()}`;
 
-  // Ensure slug uniqueness
+  // Ensure slug uniqueness — retry on P2002 race instead of pre-checking,
+  // since two concurrent requests could both pass a findUnique before either writes.
   let finalSlug = slug;
-  let i = 1;
-  while (await prisma.organization.findUnique({ where: { slug: finalSlug } })) {
-    finalSlug = `${slug}-${i++}`;
+  let attempt = 0;
+  // We try up to 5 distinct slugs; the unique index on Organization.slug is
+  // the source of truth.
+  while (true) {
+    try {
+      const org = await prisma.$transaction(async (tx) => {
+        const created = await tx.organization.create({
+          data: {
+            name: body.name!,
+            slug: finalSlug,
+            ownerId: session.user.id,
+            plan: "free",
+          },
+        });
+        await tx.member.create({
+          data: { userId: session.user.id, organizationId: created.id, role: "owner" },
+        });
+        return created;
+      });
+      return NextResponse.json({ organization: org }, { status: 201 });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "P2002" && attempt < 5) {
+        attempt++;
+        finalSlug = `${slug}-${attempt}`;
+        continue;
+      }
+      throw err;
+    }
   }
-
-  const org = await prisma.$transaction(async (tx) => {
-    const created = await tx.organization.create({
-      data: {
-        name: body.name!,
-        slug: finalSlug,
-        ownerId: session.user.id,
-        plan: "free",
-      },
-    });
-    await tx.member.create({
-      data: { userId: session.user.id, organizationId: created.id, role: "owner" },
-    });
-    return created;
-  });
-
-  return NextResponse.json(org, { status: 201 });
 }

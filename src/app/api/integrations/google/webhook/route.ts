@@ -20,6 +20,14 @@ export async function POST(req: NextRequest) {
   });
   if (!account) return NextResponse.json({ error: "Unknown channel" }, { status: 404 });
 
+  // Validate Google's channel token (we set this when creating the watch).
+  // Stored on the account record. Reject mismatched tokens to prevent spoofed
+  // webhook calls from triggering sync jobs.
+  const expectedToken = req.headers.get("x-goog-channel-token");
+  if (account.webhookResourceId && expectedToken && account.webhookResourceId !== expectedToken) {
+    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+  }
+
   await getCalendarSyncQueue().add(
     "delta-sync",
     { type: "delta-sync", accountId: account.id },

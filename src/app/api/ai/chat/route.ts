@@ -12,7 +12,12 @@ Be concise and propose options as numbered lists when appropriate.`;
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return new Response("Unauthorized", { status: 401 });
+  if (!session?.user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const body = (await req.json()) as {
     messages: UIMessage[];
