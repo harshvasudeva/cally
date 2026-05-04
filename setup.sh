@@ -484,12 +484,12 @@ BACKUPEOF
 }
 
 # ============================================================================
-# 11. Install npm dependencies & build
+# 11. Install bun dependencies & build
 # ============================================================================
 build_app() {
     log_step "Installing dependencies..."
     cd "$CALLY_DIR"
-    npm ci --production=false
+    bun install
 
     log_step "Generating Prisma client..."
     npx prisma generate
@@ -498,7 +498,7 @@ build_app() {
     npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss
 
     log_step "Building Next.js application..."
-    npm run build
+    bun run build
 
     log_info "Build completed successfully."
 }

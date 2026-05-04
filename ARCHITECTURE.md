@@ -290,7 +290,7 @@ export function getModel(cred: UserAICredential, modelId: string) {
 * Auth: `better-auth/expo` plugin. Uses `expo-secure-store`. Bearer token in headers.
 * Screens: Login, Calendar (Agenda + Day), Booking management, Notifications, Settings, AI Assistant.
 * Push notifications via Expo push service (reminders 24h / 1h before appointment).
-* Out-of-scope for the Emergent **web preview** environment; the iOS/Android apps must be built with EAS Build & tested on devices.
+* The iOS/Android apps must be built with EAS Build & tested on devices.
 
 ---
 
@@ -350,14 +350,9 @@ Worker process is a separate Node entrypoint (`src/worker.ts`), run as its own s
 | ----------------------- | ---------------------------------------------------------- |
 | **Self-hosted**         | `setup.sh` (existing) + Caddy + Postgres + Redis + systemd |
 | **Docker Compose**      | `docker-compose.yml` (web, worker, postgres, redis)        |
-| **Emergent preview**    | Supervisor: nextjs (3000) + worker + postgres + redis      |
 | **Cloud (Vercel/Fly)**  | Vercel for web; Neon/Supabase for Postgres; Upstash Redis  |
 
-### 13.1 Emergent preview adaptation (this environment)
 
-* Supervisor's read-only `/etc/supervisor/conf.d/supervisord.conf` runs uvicorn on 8001 + yarn-start on 3000 — neither exists in this Next.js project.
-* We add `/etc/supervisor/conf.d/cally.conf` with **postgresql**, **redis**, **nextjs (port 3000)**, **api-proxy (port 8001)**, **worker** programs.
-* `api-proxy` forwards external `/api/*` requests (which the Emergent ingress routes to port 8001) back to `localhost:3000` so the Next.js Route Handlers receive them correctly.
 
 ---
 

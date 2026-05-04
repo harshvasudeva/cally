@@ -12,7 +12,7 @@ This roadmap outlines the path for **Cally** to become the premier self-hosted, 
 5.  **CSRF Protection:** Ensure robust CSRF tokens for all state-changing requests, beyond Next.js defaults.
 6.  **Session Management Dashboard:** Allow users to view and revoke active sessions from other devices.
 7.  **Database Encryption:** Implement at-rest encryption for sensitive fields like `smtpPass` and `discordBotToken` using AES-256.
-8.  **Automated Security Scanning:** Integrate `npm audit` and `snyk` into the local development/deployment workflow.
+8.  **Automated Security Scanning:** Integrate `bun audit` and `snyk` into the local development/deployment workflow.
 9.  **Security Headers:** Configure strict CSP (Content Security Policy), HSTS, and X-Frame-Options.
 10. **Password Policy Enforcement:** Require minimum length, complexity, and check against "Have I Been Pwned" API.
 11. **Account Lockout:** Automatically lock accounts after X failed login attempts with a cooldown period.

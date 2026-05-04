@@ -16,27 +16,11 @@
 
 See **[`/app/ARCHITECTURE.md`](./ARCHITECTURE.md)** for the full v2 spec.
 
-## Quick start (Emergent preview environment)
+## Quick start
 
-The preview pod is configured with:
-
-| Service       | Port | Notes |
-|--------------|------|-------|
-| Next.js dev   | 3000 | supervisor program `nextjs` |
-| api-proxy     | 8001 | forwards `/api/*` from external 8001 → 3000 (because Emergent ingress sends `/api/*` to 8001) |
-| PostgreSQL 15 | 5432 | data dir `/app/data/postgres/15/main` (persistent) |
-| Redis 7       | 6379 | data dir `/app/data/redis` |
-
-```bash
-# After a pod reset, re-bootstrap system packages:
-bash /app/scripts/bootstrap-services.sh
-sudo supervisorctl restart postgresql redis nextjs api-proxy
-
-# Manual checks:
-sudo supervisorctl status
-PGPASSWORD=cally_local_dev psql -h 127.0.0.1 -U cally -d cally -c '\dt'
-redis-cli ping
-```
+1. Run `bun install`
+2. Run `bun run dev` to start the Next.js development server on port 3000.
+3. Make sure you have PostgreSQL and Redis running.
 
 ## Auth flows working today
 
@@ -102,9 +86,6 @@ See `/app/memory/test_credentials.md`.
 │   └── migrations/
 │       └── 20260503*_init_v2_postgres/
 ├── prisma.config.ts            ← Prisma 7 datasource config
-├── scripts/
-│   ├── api-proxy.js            ← 8001 → 3000 forwarder
-│   └── bootstrap-services.sh   ← pod-reset recovery
 └── src/
     ├── app/api/
     │   ├── auth/[...all]/      ← better-auth catch-all

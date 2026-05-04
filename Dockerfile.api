@@ -1,0 +1,26 @@
+FROM oven/bun:1.3.11-alpine AS deps
+WORKDIR /app
+COPY package.json bun.lock ./
+COPY backend/package.json ./backend/package.json
+COPY packages/contracts/package.json ./packages/contracts/package.json
+RUN bun install --frozen-lockfile
+
+FROM deps AS generated
+WORKDIR /app/backend
+COPY backend/prisma ./prisma
+COPY backend/prisma.config.ts ./
+RUN bun prisma:generate
+
+FROM oven/bun:1.3.11-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=generated /app/backend/src/generated ./backend/src/generated
+COPY package.json bun.lock ./
+COPY backend ./backend
+COPY packages ./packages
+
+EXPOSE 4000
+CMD ["bun", "--cwd", "backend", "start"]
+
