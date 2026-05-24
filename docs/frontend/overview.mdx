@@ -1,0 +1,185 @@
+---
+title: Frontend Overview
+description: Next.js client architecture, routing, components, and theming
+---
+
+# Frontend Overview
+
+The Cally frontend is a **Next.js 16 App Router** application using React 19, TypeScript, and Tailwind CSS v4. It communicates exclusively with the standalone Fastify backend via the `apiJson` helper.
+
+## Architecture
+
+```
+client/client/src/
+├── app/                    # Next.js App Router pages
+│   ├── layout.tsx          # Root layout (Providers + AppShell)
+│   ├── page.tsx            # Root page (redirects to /dashboard or /login)
+│   ├── admin/             # Admin pages (audit, settings, users)
+│   ├── ai/                # AI chat interface
+│   ├── appointment-types/ # Booking type CRUD
+│   ├── appointments/      # Appointment list + management
+│   ├── availability/      # Weekly availability editor
+│   ├── book/[slug]/       # Public booking pages (no auth)
+│   ├── calendar/          # FullCalendar view
+│   ├── dashboard/         # Dashboard with stats
+│   ├── date-overrides/    # Date override management
+│   ├── import/            # ICS file import
+│   ├── login/             # Login page (credentials + OAuth)
+│   ├── organizations/     # Organization management
+│   ├── register/          # Registration page
+│   ├── settings/          # Settings sub-pages
+│   │   ├── ai/            # AI provider configuration
+│   │   ├── api-keys/     # API key management
+│   │   ├── domains/      # Domain & SSL
+│   │   ├── integrations/ # Calendar integrations
+│   │   ├── notifications/# Notification preferences
+│   │   └── profile/      # User profile
+│   └── streams/           # iCal stream subscriptions
+├── components/
+│   ├── AppShell.tsx        # Main app shell (topbar + nav + content)
+│   ├── CommandPalette.tsx  # Ctrl+K command palette
+│   ├── NavigationRail.tsx  # Sidebar navigation
+│   ├── OnboardingWizard.tsx# 5-step onboarding wizard
+│   ├── Providers.tsx       # SessionProvider + ThemeProvider + BrandingProvider
+│   ├── ThemeProvider.tsx   # Dark/light/system theme
+│   ├── TopBar.tsx          # Top navigation bar
+│   ├── calendar/          # CalendarView, ConflictResolver, EventModal
+│   └── ui/                # Reusable UI primitives (Button, Card, Modal, etc.)
+├── lib/
+│   ├── api-client.ts      # apiFetch / apiJson helpers
+│   ├── auth-client.ts     # better-auth React client
+│   ├── auth-react-compat.tsx # NextAuth-compatible shim
+│   ├── backend-url.ts     # getBackendUrl()
+│   └── utils.ts           # cn() utility
+└── types/
+    └── index.ts           # Core TypeScript interfaces
+```
+
+## Key Libraries
+
+| Library | Purpose |
+|---|---|
+| **@fullcalendar/react** | Calendar views (dayGrid, timeGrid, list, interaction) |
+| **better-auth** | Authentication client (signIn, signOut, useSession) |
+| **@ai-sdk/react** | AI chat (`useChat` hook for streaming) |
+| **lucide-react** | Icon library |
+| **sonner** | Toast notifications |
+| **next-themes** | Dark/light mode toggle |
+| **date-fns** | Date formatting and manipulation |
+| **zod** | Runtime schema validation |
+
+## Page Routes
+
+| Route | Auth Required | Description |
+|---|---|---|
+| `/` | No | Redirects to `/dashboard` or `/login` |
+| `/login` | No | Email/password + OAuth login |
+| `/register` | No | New account registration |
+| `/book/[slug]` | No | Public booking page |
+| `/dashboard` | Yes | Stats, today's schedule, upcoming |
+| `/calendar` | Yes | FullCalendar view with event CRUD |
+| `/appointments` | Yes | Appointment list with filters |
+| `/appointment-types` | Yes | Booking type CRUD |
+| `/availability` | Yes | Weekly availability editor |
+| `/date-overrides` | Yes | Date override management + holiday import |
+| `/streams` | Yes | iCal stream subscriptions |
+| `/import` | Yes | ICS file import |
+| `/ai` | Yes | AI chat interface |
+| `/organizations` | Yes | Organization CRUD + invitations |
+| `/settings/profile` | Yes | Profile settings (name, timezone, country) |
+| `/settings/ai` | Yes | AI provider key management |
+| `/settings/integrations` | Yes | Calendar integrations |
+| `/settings/api-keys` | Yes | API key management |
+| `/settings/notifications` | Yes | Notification preferences |
+| `/settings/domains` | Yes | Domain & SSL configuration |
+| `/admin/users` | Admin | User management |
+| `/admin/settings` | Admin | Site settings (SMTP, security, webhooks) |
+| `/admin/audit` | Admin | Audit log viewer |
+
+## Authentication Flow
+
+The frontend uses `better-auth/react` client with a NextAuth-compatible shim:
+
+```typescript
+// src/lib/auth-react-compat.tsx provides:
+// - useSession() → { data, status, error, update }
+// - signIn(provider, options) → supports "credentials" + OAuth
+// - signOut(options) → clears session + redirects
+// - SessionProvider → wraps the app
+```
+
+Public pages (`/login`, `/register`, `/book/*`, `/maintenance`) render without the navigation shell. All other pages check session status and redirect to `/login` if unauthenticated.
+
+## API Client
+
+All backend calls go through the `apiJson` helper:
+
+```typescript
+// src/lib/api-client.ts
+const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
+
+export async function apiJson<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${backendUrl}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+    credentials: "include", // Include cookies for auth
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.message || "API request failed");
+  }
+
+  return res.json();
+}
+```
+
+## Theming
+
+The app uses CSS custom properties for theming, defined in `globals.css`:
+
+- **Light/dark mode** via the `ThemeProvider` component (persists to `localStorage`)
+- **Branding** via `BrandingProvider` which fetches `/api/v1/branding` and applies CSS variables
+- **Tailwind v4** with custom color tokens mapped to CSS variables
+- An inline script in `layout.tsx` reads `cally-theme` from localStorage to prevent flash of wrong theme
+
+## Onboarding
+
+New users see a 5-step wizard:
+
+1. **Welcome** — Intro message
+2. **Timezone** — Set timezone and country
+3. **Availability** — Configure weekly hours
+4. **Event Type** — Create first appointment type
+5. **Done** — Redirect to dashboard
+
+The wizard sets `onboardingCompleted = true` on the user profile after completion.
+
+## Component Library
+
+All reusable UI components are in `components/ui/`:
+
+| Component | Based On |
+|---|---|
+| `Button` | Radix Slot + CVA (class-variance-authority) |
+| `Modal` | Radix Dialog |
+| `Select` | Radix Select |
+| `Tabs` | Radix Tabs |
+| `Tooltip` | Radix Tooltip |
+| `Dropdown` | Radix DropdownMenu |
+| `Input` | Native input with Cally styling |
+| `Card` | Custom card container |
+| `Table` | Custom data table |
+| `Badge` | Status badges |
+| `Avatar` | User avatars |
+| `Switch` | Toggle switch |
+| `FileUpload` | File upload with drag & drop |
+| `ColorPicker` | Color selection input |
+| `EmptyState` | Empty state placeholder |
+| `StatsCard` | Dashboard stat card |
+| `Skeleton` | Loading skeleton |
+| `Toast` | Sonner toast wrapper |
+| `Breadcrumb` | Navigation breadcrumbs |

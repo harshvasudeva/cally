@@ -1,0 +1,122 @@
+{
+  "name": "Cally",
+  "logo": {
+    "dark": "/logo-dark.svg",
+    "light": "/logo-light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#6366F1",
+    "light": "#818CF8",
+    "dark": "#4F46E5",
+    "anchors": {
+      "from": "#6366F1",
+      "to": "#4F46E5"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/harshvasudeva/cally"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "/getting-started/installation"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api"
+    },
+    {
+      "name": "Integrations",
+      "url": "integrations"
+    },
+    {
+      "name": "Deployment",
+      "url": "deployment"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "index",
+        "getting-started/installation",
+        "getting-started/environment-variables",
+        "getting-started/project-structure"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/database"
+      ]
+    },
+    {
+      "group": "Authentication",
+      "pages": [
+        "auth/overview",
+        "auth/oauth",
+        "auth/two-factor",
+        "auth/api-reference"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api/overview",
+        "api/users",
+        "api/events",
+        "api/availability",
+        "api/appointments",
+        "api/booking",
+        "api/calendar-accounts",
+        "api/calendar-sync",
+        "api/contracts"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        "integrations/google-calendar",
+        "integrations/outlook",
+        "integrations/caldav",
+        "integrations/stripe"
+      ]
+    },
+    {
+      "group": "AI",
+      "pages": [
+        "ai/overview",
+        "ai/providers",
+        "ai/chat-api"
+      ]
+    },
+    {
+      "group": "Frontend",
+      "pages": [
+        "frontend/overview"
+      ]
+    },
+    {
+      "group": "Deployment",
+      "pages": [
+        "deployment/self-hosted",
+        "deployment/docker",
+        "deployment/cloud"
+      ]
+    },
+    {
+      "group": "Workers",
+      "pages": [
+        "background-workers/overview"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/harshvasudeva/cally"
+  }
+}

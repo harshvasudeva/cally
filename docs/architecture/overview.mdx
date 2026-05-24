@@ -1,0 +1,155 @@
+---
+title: Architecture Overview
+description: High-level system design, tech stack, and design decisions
+---
+
+# Architecture Overview
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| **Frontend** | Next.js 16 App Router, React 19, TypeScript, Tailwind v4 |
+| **Mobile** | Expo SDK 52+, React Native (planned) |
+| **Backend API** | Fastify 5 (TypeScript, ESM, top-level await) |
+| **Auth** | better-auth v1.x (org + 2FA + passkey + OAuth plugins) |
+| **Database** | PostgreSQL 16 + Prisma 7 (pg driver adapter, cuid IDs) |
+| **Cache/Queue** | Redis 7 + BullMQ (calendar sync, reminders, email) |
+| **AI Layer** | Vercel AI SDK (provider-agnostic) + BYO-key model |
+| **Calendar** | `googleapis`, Microsoft Graph, `tsdav` (CalDAV) |
+| **Payments** | Stripe (Checkout + Connect, planned) |
+| **Email** | nodemailer SMTP + React Email templates |
+| **Encryption** | AES-256-GCM for OAuth tokens, AI keys, TOTP secrets |
+| **Testing** | Vitest (unit), Playwright (e2e, planned) |
+
+## System Diagram
+
+```
++------------------+    +------------------+    +--------------------+
+|  Next.js Web    |    |  Expo Mobile     |    |  Public Booking    |
+|  (App Router)   |    |  (React Native)  |    |     Pages          |
++--------+---------+    +--------+---------+    +---------+----------+
+         |                       |                        |
+         +-----------------------+------------------------+
+                                 |
+                   +-------------v--------------+
+                   |  Fastify API Server       |
+                   |  /api/v1/*                |
+                   |  /api/auth/* (better-auth) |
+                   +-------+-----------+-------+
+                           |           |
+               +-----------v-----+ +---v----------+
+               |  PostgreSQL 16  | |  Redis 7     |
+               |  (Prisma 7)     | |  + BullMQ    |
+               +-----------------+ +---+----------+
+                                         |
+                           +-------------v----------+
+                           |            |           |
+                   +-------+----+ +-----+------+ +--v---------+
+                   | Google Cal | |  Outlook   | | Reminders  |
+                   | sync worker | | sync work  | | worker    |
+                   +-------------+ +------------+ +------------+
+                           |            |
+                           v            v
+                   +----------------------------------------+
+                   |  External APIs                         |
+                   |  Google Calendar / Microsoft Graph /    |
+                   |  Apple iCloud (CalDAV) / Zoom / Teams  |
+                   +----------------------------------------+
+```
+
+## Design Decisions
+
+### Why Fastify instead of Next.js API routes?
+
+The backend is a **standalone Fastify server** (`@cally/backend`), separate from the Next.js frontend. This separation provides:
+
+- **Independent scaling** — the API can run on different hardware than the frontend
+- **Mobile support** — the Expo app shares the same API
+- **Cleaner architecture** — dedicated modules with routes/service/repository layers
+- **Better observability** — separate logging, health checks, and process management
+
+### Why better-auth over NextAuth?
+
+| Concern | NextAuth v4 | better-auth |
+|---|---|---|
+| Maintenance status | In maintenance mode | Actively developed |
+| 2FA / Passkeys | Requires custom setup | Built-in plugins |
+| Organization/multi-tenant | Not supported | Organization plugin |
+| Session strategy | JWT or database | httpOnly cookie + Bearer token |
+| Provider support | Good | 8+ social providers |
+
+### Why BYO-AI?
+
+Instead of reselling AI access, Cally lets each user bring their own API key:
+
+- **No markup** on AI usage — users pay provider directly
+- **Privacy** — keys are encrypted at rest with AES-256-GCM
+- **Flexibility** — choose OpenAI, Anthropic, Gemini, Groq, Mistral, OpenRouter, or Ollama
+- **No vendor lock-in** — swap providers anytime
+
+### Why Prisma 7 with pg driver adapter?
+
+Prisma 7 uses the new `@prisma/adapter-pg` driver which:
+- Supports native PostgreSQL features
+- Uses connection pooling via `pg.Pool`
+- Eliminates the need for the Prisma Engine binary
+- Works seamlessly in serverless environments
+
+## Request Flow
+
+### Authenticated API Request
+
+```
+1. Client sends request with httpOnly cookie (web) or Authorization header (mobile)
+2. Fastify `preHandler` hook calls `getSessionUser()` from `infrastructure/auth.ts`
+3. better-auth validates the session against PostgreSQL
+4. If valid, the user object is attached to `request.user`
+5. Route handler accesses `request.user` for authorization and data scoping
+6. Response is returned as JSON
+```
+
+### Public Booking Request
+
+```
+1. Anonymous visitor hits /api/v1/public/book/:slug
+2. Route looks up the AppointmentType by slug
+3. Availability is computed: weekly hours + overrides - external conflicts - existing appointments
+4. Available time slots are returned
+5. On booking: Appointment is created, confirmation email is queued
+```
+
+### Calendar Sync Request
+
+```
+1. Google webhook ping → POST /api/integrations/google/webhook
+2. Webhook handler verifies X-Goog-Channel-Token
+3. BullMQ job is enqueued: delta-sync(accountId)
+4. Worker calls Google Calendar events.list({ syncToken })
+5. ExternalEvents are upserted; cancellations are removed
+6. On 410 Gone → fallback to full-sync
+```
+
+## Error Handling
+
+The backend uses a hierarchy of custom error classes:
+
+| Error Class | HTTP Status | Usage |
+|---|---|---|
+| `UnauthorizedError` | 401 | Missing or invalid authentication |
+| `ForbiddenError` | 403 | Authenticated but not authorized |
+| `NotFoundError` | 404 | Resource not found |
+| `BookingConflictError` | 409 | Slot no longer available |
+| `AppError` (base) | 500 | Unhandled errors |
+
+All errors are returned in a consistent format:
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "Appointment type not found",
+  "details": {}
+}
+```
+
+This schema is defined in `@cally/contracts` as `ApiErrorResponse`.

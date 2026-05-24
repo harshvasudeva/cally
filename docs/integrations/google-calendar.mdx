@@ -1,0 +1,162 @@
+---
+title: Google Calendar Integration
+description: Connect, sync, and manage Google Calendar with Cally
+---
+
+# Google Calendar Integration
+
+Google Calendar is the primary calendar integration in Cally, supporting both social login and two-way calendar sync.
+
+## Prerequisites
+
+1. A [Google Cloud Console](https://console.cloud.google.com/) project
+2. OAuth 2.0 Web application credentials
+3. Google Calendar API enabled in the project
+
+## Setup
+
+### Step 1: Create OAuth Credentials
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create a new project or select an existing one
+3. Navigate to **APIs & Services → Library**
+4. Enable the **Google Calendar API**
+5. Navigate to **APIs & Services → Credentials**
+6. Click **Create Credentials → OAuth client ID**
+7. Select **Web application**
+8. Add authorized redirect URIs:
+
+| Purpose | URI |
+|---|---|
+| Auth login callback | `{APP_URL}/api/auth/callback/google` |
+| Calendar connect callback | `{APP_URL}/api/integrations/google/callback` |
+
+For local development:
+```
+http://localhost:3000/api/auth/callback/google
+http://localhost:3000/api/integrations/google/callback
+```
+
+### Step 2: Configure Environment Variables
+
+```env .env
+GOOGLE_CLIENT_ID="123456789-abc.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="GOCSPX-xxxxxxxxxxxxxxxxx"
+```
+
+### Step 3: Restart the Server
+
+The Google provider will appear in the login UI and integrations settings automatically when both env vars are set.
+
+## Connect Flow
+
+### User-Initiated Connection
+
+```
+1. User navigates to Settings → Integrations
+2. Clicks "Connect Google Calendar"
+3. Frontend redirects to: GET /api/integrations/google/connect
+4. Server constructs Google OAuth URL with these scopes:
+   - openid
+   - profile
+   - email
+   - https://www.googleapis.com/auth/calendar
+   - https://www.googleapis.com/auth/calendar.events
+5. User authorizes in Google
+6. Google redirects back to: /api/integrations/google/callback?code=...
+7. Server exchanges the authorization code for tokens
+8. Tokens are encrypted with AES-256-GCM and stored in CalendarAccount
+9. Server lists the user's calendars, creates ExternalCalendar rows
+10. Primary calendar is auto-selected for conflict detection
+11. A full-sync BullMQ job is enqueued
+```
+
+### API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/integrations` | Yes | List connected accounts, with link to Google connect |
+| GET | `/api/v1/integrations/google/connect` | Yes | Redirect to Google OAuth |
+| GET | `/api/v1/integrations/google/callback` | No | OAuth callback (exchanges code for tokens) |
+| DELETE | `/api/v1/calendar-accounts/:id` | Yes | Disconnect a calendar account |
+
+## Sync Engine
+
+### Full Sync
+
+Triggered when a new Google account is connected or when a sync token has expired:
+
+1. Calls Google Calendar `events.list()` without a sync token
+2. Creates/updates `ExternalEvent` records for all events
+3. Stores `nextSyncToken` on the `ExternalCalendar` row
+4. Subscribes to push notifications via `events.watch()`
+5. Stores `webhookChannelId` and `webhookExpiresAt`
+
+### Incremental Sync (Delta)
+
+Triggered by webhook push notifications from Google:
+
+1. Google sends `POST /api/integrations/google/webhook` with `X-Goog-Channel-Token`
+2. Server verifies the channel token
+3. Enqueues a `delta-sync` BullMQ job
+4. Worker calls `events.list({ syncToken })` to get only changed events
+5. Upserts new/updated events, deletes cancelled events
+6. Updates the sync token
+
+### Handling Expired Sync Tokens
+
+If Google returns `410 Gone` for an expired sync token, the system automatically falls back to a full sync.
+
+## Conflict Detection
+
+Connected calendar events are used to prevent double-booking:
+
+```typescript
+// When computing available slots for a booking page:
+const busyTimes = [
+  ...getExternalEvents(user, dateRange),  // From connected calendars
+  ...getAppointments(user, dateRange),     // From Cally appointments
+  ...getDateOverrides(user, dateRange),    // From blocked dates
+];
+
+const availableSlots = subtractFromAvailability(
+  weeklyAvailability,
+  busyTimes
+);
+```
+
+Only calendars where `selected = true` are included in conflict detection. Users can toggle which calendars to include in Settings → Integrations.
+
+## Data Encryption
+
+Google OAuth tokens are encrypted at rest using AES-256-GCM:
+
+```typescript
+// Encryption key from MASTER_ENCRYPTION_KEY env var (32 bytes, base64)
+const encrypted = encrypt(accessToken);
+const encrypted = encrypt(refreshToken);
+```
+
+- `accessTokenEnc` stored in `CalendarAccount`
+- `refreshTokenEnc` stored in `CalendarAccount`
+- Tokens are decrypted only when making API calls to Google
+- The `MASTER_ENCRYPTION_KEY` must be kept secure and backed up
+
+## Token Refresh
+
+Google access tokens expire after ~1 hour. The system automatically refreshes them:
+
+1. Before any API call, check `tokenExpiresAt` on the `CalendarAccount`
+2. If expired, use the encrypted refresh token to get a new access token
+3. Update `accessTokenEnc` and `tokenExpiresAt`
+4. If the refresh fails (refresh token revoked), set `syncStatus = "disconnected"`
+
+## Disconnecting
+
+When a user disconnects a Google Calendar account:
+
+1. Delete the Google webhook channel (if active)
+2. Cancel any pending BullMQ sync jobs
+3. Delete all `ExternalCalendar` and `ExternalEvent` records
+4. Attempt to revoke the OAuth token via Google's revocation endpoint
+5. Delete the `CalendarAccount` record

@@ -1,0 +1,481 @@
+---
+title: Database Models
+description: Complete reference for all 24 Prisma models, relationships, and domain groupings
+---
+
+# Database Models
+
+Cally uses **PostgreSQL 16** with **Prisma 7** and the `@prisma/adapter-pg` driver. All models use **cuid** IDs.
+
+## Domain Overview
+
+The 24 Prisma models are organized into five domains:
+
+| Domain | Models | Purpose |
+|---|---|---|
+| Identity & Access | User, Account, Session, Verification, TwoFactor, Passkey | better-auth core tables |
+| Multi-Tenancy | Organization, Member, Invitation, Team, TeamMember | Organization plugin |
+| Calendar Core | Event, Availability, DateOverride, AppointmentType, Appointment, CalendarStream | Core scheduling |
+| External Sync | CalendarAccount, ExternalCalendar, ExternalEvent, CanonicalEvent, ExternalEventMapping | Calendar integrations |
+| AI Layer | UserAICredential, AIConversation, AIMessage | BYO-AI |
+| Misc | AuditLog, Settings, ApiKey | Administration |
+
+---
+
+## Identity & Access
+
+### User
+
+The central user entity with many relations.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `email` | String | Unique, indexed |
+| `name` | String | Display name |
+| `slug` | String | Unique, URL-friendly identifier |
+| `role` | String | `"ADMIN"` or `"USER"` |
+| `timezone` | String | IANA timezone (e.g. `"America/New_York"`) |
+| `theme` | String | `"light"`, `"dark"`, or `"system"` |
+| `country` | String? | ISO country code |
+| `avatarUrl` | String? | Profile image URL |
+| `onboardingCompleted` | Boolean | Defaults to `false` |
+| `twoFactorEnabled` | Boolean | Defaults to `false` |
+| `failedLoginAttempts` | Int | For account lockout |
+| `lockedUntil` | DateTime? | Account lockout expiration |
+| `notificationPrefs` | Json? | Notification preferences |
+| `icalToken` | String? | Token for iCal feed access |
+
+**Relations:** Has many Account, Session, Event, Availability, DateOverride, AppointmentType, Appointment, CalendarAccount, CalendarStream, UserAICredential, AIConversation, ApiKey, Member, AuditLog.
+
+### Account
+
+OAuth/credential provider links. Unique on `(providerId, accountId)`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `accountId` | String | Provider-specific user ID |
+| `providerId` | String | e.g. `"google"`, `"github"`, `"credential"` |
+| `accessToken` | String? | OAuth access token |
+| `refreshToken` | String? | OAuth refresh token |
+| `idToken` | String? | OpenID ID token |
+| `password` | String? | Bcrypt hash for credential accounts |
+
+### Session
+
+Server-side session tokens with device tracking.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `token` | String | Unique session token |
+| `userId` | String | Foreign key → User |
+| `expiresAt` | DateTime | Session expiration |
+| `ipAddress` | String? | Login IP |
+| `userAgent` | String? | Browser/device info |
+
+### Verification
+
+Email verification and password reset tokens.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `identifier` | String | Email or identifier |
+| `value` | String | Token/hash value |
+| `expiresAt` | DateTime | Token expiration |
+
+### TwoFactor
+
+TOTP two-factor authentication secrets and backup codes (encrypted at rest).
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Unique, foreign key → User |
+| `secret` | String | AES-256-GCM encrypted TOTP secret |
+| `backupCodes` | String? | Encrypted backup codes |
+
+### Passkey
+
+WebAuthn passkey credentials.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `credentialId` | String | Unique WebAuthn credential ID |
+| `publicKey` | Bytes | WebAuthn public key |
+| `counter` | Int | Sign count for replay protection |
+| `transports` | String? | Allowed transports |
+| `backedUp` | Boolean | Whether the key is backed up |
+
+---
+
+## Multi-Tenancy
+
+### Organization
+
+Top-level organization entity with plan-based features.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `name` | String | Organization display name |
+| `slug` | String | Unique URL slug |
+| `logo` | String? | Logo URL |
+| `plan` | String | `"free"`, `"pro"`, `"business"`, `"enterprise"` |
+| `ownerId` | String | Foreign key → User |
+| `metadata` | Json? | Arbitrary org metadata |
+
+### Member
+
+User ↔ Organization mapping with roles.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `organizationId` | String | Foreign key → Organization |
+| `role` | String | `"owner"`, `"admin"`, `"member"` |
+| `joinedAt` | DateTime | When the member joined |
+
+Unique on `(userId, organizationId)`.
+
+### Invitation
+
+Pending organization invitations.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `email` | String | Invitee email |
+| `organizationId` | String | Foreign key → Organization |
+| `role` | String | Role to assign on acceptance |
+| `status` | String | `"pending"`, `"accepted"`, `"rejected"`, `"expired"` |
+| `expiresAt` | DateTime | Invitation expiration |
+
+### Team
+
+Sub-groups within an organization for scheduling workflows.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `organizationId` | String | Foreign key → Organization |
+| `name` | String | Team display name |
+| `schedulingMode` | String | `"collective"` or `"round_robin"` |
+
+### TeamMember
+
+User ↔ Team mapping with priority for round-robin scheduling.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `teamId` | String | Foreign key → Team |
+| `userId` | String | Foreign key → User |
+| `priority` | Int | Priority order for round-robin |
+
+Unique on `(teamId, userId)`.
+
+---
+
+## Calendar Core
+
+### Event
+
+Internal calendar events created by the user.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `title` | String | Event title |
+| `description` | String? | Event description |
+| `start` | DateTime | Start timestamp |
+| `end` | DateTime | End timestamp |
+| `allDay` | Boolean | Defaults to `false` |
+| `color` | String? | Display color |
+| `category` | String? | Event category |
+| `location` | String? | Event location |
+| `recurrence` | String? | RRULE recurrence string |
+| `userId` | String | Foreign key → User |
+
+### Availability
+
+Weekly availability slots that define when a user is bookable.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `dayOfWeek` | Int | 0 (Sunday) through 6 (Saturday) |
+| `startTime` | String | HH:mm format |
+| `endTime` | String | HH:mm format |
+| `isActive` | Boolean | Defaults to `true` |
+| `userId` | String | Foreign key → User |
+
+### DateOverride
+
+Day-specific overrides that block or open time outside regular availability.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `date` | DateTime | The specific date |
+| `isBlocked` | Boolean | Whether the day is blocked |
+| `startTime` | String? | Override start time |
+| `endTime` | String? | Override end time |
+| `reason` | String? | Reason for the override |
+| `userId` | String | Foreign key → User |
+
+Unique on `(userId, date)`.
+
+### AppointmentType
+
+Defines bookable event types with their settings and constraints.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `name` | String | Display name |
+| `slug` | String | URL slug |
+| `duration` | Int | Duration in minutes |
+| `bufferBefore` | Int | Buffer before in minutes |
+| `bufferAfter` | Int | Buffer after in minutes |
+| `color` | String? | Display color |
+| `description` | String? | Type description |
+| `location` | String? | Default location |
+| `formFields` | Json? | Custom booking form fields |
+| `isActive` | Boolean | Whether the type is bookable |
+| `minNotice` | Int? | Minimum advance notice in minutes |
+| `maxPerDay` | Int? | Maximum bookings per day |
+| `priceCents` | Int? | Price in cents |
+| `currency` | String? | ISO currency code |
+| `meetingProvider` | String? | `"zoom"`, `"meet"`, `"teams"`, `"in_person"`, `"phone"`, `"custom"` |
+| `teamId` | String? | Foreign key → Team (for round-robin/collective) |
+
+Unique on `(userId, slug)`.
+
+### Appointment
+
+A specific booking instance linked to an AppointmentType.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `title` | String | Appointment title |
+| `start` | DateTime | Start timestamp |
+| `end` | DateTime | End timestamp |
+| `status` | String | `"PENDING"`, `"CONFIRMED"`, `"CANCELLED"`, `"COMPLETED"` |
+| `guestEmail` | String? | Guest email |
+| `guestName` | String? | Guest name |
+| `guestPhone` | String? | Guest phone |
+| `guestNotes` | String? | Guest notes |
+| `meetingLink` | String? | Video call URL |
+| `paymentStatus` | String? | Payment tracking |
+| `aiSummary` | String? | AI-generated meeting summary |
+| `aiTranscript` | String? | AI-generated transcript |
+| `negotiationNote` | String? | Rescheduling negotiation notes |
+| `originalTime` | DateTime? | Original time if rescheduled |
+| `userId` | String | Foreign key → User |
+| `appointmentTypeId` | String | Foreign key → AppointmentType |
+
+### CalendarStream
+
+External iCal feed subscriptions for read-only calendar data.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `name` | String | Feed display name |
+| `url` | String | iCal feed URL |
+| `color` | String? | Display color |
+| `category` | String? | Feed category |
+| `isActive` | Boolean | Whether the stream is active |
+| `lastSyncAt` | DateTime? | Last successful sync time |
+| `userId` | String | Foreign key → User |
+
+Unique on `(userId, url)`.
+
+---
+
+## External Calendar Sync
+
+### CalendarAccount
+
+OAuth-connected external calendar accounts.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `provider` | String | `"google"`, `"microsoft"`, `"apple_caldav"`, `"generic_caldav"` |
+| `externalAccountId` | String | Provider-specific account ID |
+| `email` | String | Account email |
+| `accessTokenEnc` | String | AES-256-GCM encrypted access token |
+| `refreshTokenEnc` | String | AES-256-GCM encrypted refresh token |
+| `syncStatus` | String | `"idle"`, `"syncing"`, `"error"`, `"disconnected"` |
+| `lastSyncAt` | DateTime? | Last successful sync |
+| `webhookChannelId` | String? | Google push notification channel |
+| `webhookExpiresAt` | DateTime? | Webhook channel expiration |
+
+Unique on `(userId, provider, externalAccountId)`.
+
+### ExternalCalendar
+
+Individual calendars within a connected account.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `calendarAccountId` | String | Foreign key → CalendarAccount |
+| `externalId` | String | Provider calendar ID |
+| `summary` | String | Calendar display name |
+| `timezone` | String? | Calendar timezone |
+| `isPrimary` | Boolean | Whether this is the primary calendar |
+| `selected` | Boolean | Whether the user has enabled this calendar for conflicts |
+| `writable` | Boolean | Whether Cally can write events to this calendar |
+| `syncToken` | String? | Incremental sync token |
+
+Unique on `(calendarAccountId, externalId)`.
+
+### ExternalEvent
+
+Mirrored events from external calendars used for conflict detection.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `externalCalendarId` | String | Foreign key → ExternalCalendar |
+| `externalId` | String | Provider event ID |
+| `iCalUid` | String? | iCal UID for recurrence matching |
+| `summary` | String? | Event title |
+| `start` | DateTime | Start time |
+| `end` | DateTime | End time |
+| `allDay` | Boolean | Whether this is an all-day event |
+
+Unique on `(externalCalendarId, externalId)`.
+
+### CanonicalEvent
+
+Deduplicated unified events across all providers for a user.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `title` | String? | Unified event title |
+| `start` | DateTime | Start time |
+| `end` | DateTime | End time |
+| `allDay` | Boolean | All-day flag |
+| `status` | String? | Event status |
+| `iCalUid` | String? | iCal UID for cross-provider matching |
+
+### ExternalEventMapping
+
+Links canonical events to provider-specific events for deduplication.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `canonicalEventId` | String | Foreign key → CanonicalEvent |
+| `provider` | String | Calendar provider |
+| `externalCalendarId` | String | Foreign key → ExternalCalendar |
+| `externalEventId` | String | Foreign key → ExternalEvent |
+| `iCalUid` | String? | iCal UID |
+| `rawHash` | String? | Hash of the raw provider data |
+
+Unique on `(provider, externalCalendarId, externalEventId)`.
+
+---
+
+## AI Layer
+
+### UserAICredential
+
+Per-user encrypted AI provider API keys.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `providerId` | String | `"openai"`, `"anthropic"`, `"google"`, `"groq"`, `"mistral"`, `"openrouter"`, `"ollama"` |
+| `apiKeyEnc` | String | AES-256-GCM encrypted API key |
+| `defaultModel` | String? | Default model ID for this provider |
+| `baseUrl` | String? | Custom base URL (for Ollama/OpenRouter) |
+| `label` | String? | User-friendly label |
+| `lastTestedAt` | DateTime? | Last successful key validation |
+| `lastTestedOk` | Boolean? | Whether the key was valid on last test |
+
+Unique on `(userId, providerId, label)`.
+
+### AIConversation
+
+Per-user chat conversations with the scheduling agent.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `credentialId` | String? | Foreign key → UserAICredential |
+| `title` | String? | Conversation title |
+| `pinned` | Boolean | Whether the conversation is pinned |
+
+### AIMessage
+
+Individual messages within a conversation with token and cost tracking.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `conversationId` | String | Foreign key → AIConversation |
+| `role` | String | `"user"`, `"assistant"`, `"system"`, `"tool"` |
+| `content` | String? | Message text content |
+| `toolCalls` | Json? | Tool call data |
+| `toolResults` | Json? | Tool result data |
+| `model` | String? | Model used |
+| `provider` | String? | Provider used |
+| `inputTokens` | Int? | Input token count |
+| `outputTokens` | Int? | Output token count |
+| `costCents` | Int? | Estimated cost in cents |
+
+---
+
+## Misc
+
+### AuditLog
+
+Immutable audit trail for all significant actions.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `action` | String | Action identifier |
+| `entity` | String | Entity type |
+| `entityId` | String | Entity ID |
+| `details` | Json? | Additional context |
+| `ipAddress` | String? | Source IP |
+| `userAgent` | String? | Source browser/device |
+| `userId` | String? | Foreign key → User |
+
+### Settings
+
+Global application settings (singleton pattern).
+
+Key fields include: `siteName`, `siteDescription`, `primaryColor`, SMTP configuration, Discord integration, webhook URLs, `allowRegistration`, `maxLoginAttempts`, `lockoutDuration`, `requireEmailVerification`, `maintenanceMode`.
+
+### ApiKey
+
+API key authentication for external integrations.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `name` | String | Key label |
+| `keyHash` | String | Unique, bcrypt hash of the key |
+| `keyPrefix` | String | First 8 chars for identification |
+| `permissions` | Json? | Permission scope |
+| `expiresAt` | DateTime? | Key expiration |
+| `userId` | String | Foreign key → User |

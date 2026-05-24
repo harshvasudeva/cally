@@ -1,0 +1,252 @@
+---
+title: Self-Hosted Deployment
+description: Deploy Cally on a VPS with Caddy, PostgreSQL, Redis, and systemd
+---
+
+# Self-Hosted Deployment
+
+Deploy Cally on a VPS (Ubuntu/Debian) using Caddy as a reverse proxy, systemd for process management, and managed PostgreSQL/Redis instances.
+
+## Prerequisites
+
+| Dependency | Version | Notes |
+|---|---|---|
+| Node.js | 20+ | LTS recommended |
+| Bun | 1.3+ | Package manager |
+| PostgreSQL | 16+ | Separate instance recommended |
+| Redis | 7+ | Separate instance recommended |
+| Caddy | 2+ | Reverse proxy with automatic HTTPS |
+
+## Step-by-Step Setup
+
+### 1. Install Dependencies
+
+```bash
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+
+# Install Caddy
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+```
+
+### 2. Clone and Build
+
+```bash
+# Clone the repository
+git clone https://github.com/harshvasudeva/cally.git
+cd cally/client
+
+# Install dependencies
+bun install
+
+# Build the Next.js frontend
+bun run client:build
+
+# Build the backend (if needed, or run directly with tsx)
+cd ../backend
+bun install
+```
+
+### 3. Configure Environment
+
+Create `.env` files for both the client and backend.
+
+**Backend `.env`:**
+
+```env
+HOST=0.0.0.0
+PORT=4000
+DATABASE_URL=postgresql://cally:secure_password@localhost:5432/cally
+BETTER_AUTH_SECRET=your-long-random-secret-at-least-16-chars
+BETTER_AUTH_URL=https://your-domain.com
+CLIENT_URL=https://your-domain.com
+CORS_ORIGINS=https://your-domain.com
+REDIS_URL=redis://localhost:6379
+MASTER_ENCRYPTION_KEY=$(openssl rand -base64 32)
+```
+
+**Client `.env`:**
+
+```env
+NEXT_PUBLIC_BACKEND_URL=https://your-domain.com
+NEXT_PUBLIC_APP_NAME=Cally
+NEXT_PUBLIC_APP_URL=https://your-domain.com
+```
+
+### 4. Set Up PostgreSQL
+
+```bash
+# Create database and user
+sudo -u postgres psql
+CREATE USER cally WITH PASSWORD 'secure_password';
+CREATE DATABASE cally OWNER cally;
+\q
+
+# Run migrations
+cd /path/to/cally/backend
+bunx prisma migrate deploy
+bunx prisma generate
+```
+
+### 5. Configure systemd Services
+
+**`/etc/systemd/system/cally-api.service`:**
+
+```ini
+[Unit]
+Description=Cally API Server
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=cally
+WorkingDirectory=/opt/cally/backend
+ExecStart=/usr/bin/node dist/server.js
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`/etc/systemd/system/cally-web.service`:**
+
+```ini
+[Unit]
+Description=Cally Web Server
+After=network.target cally-api.service
+
+[Service]
+Type=simple
+User=cally
+WorkingDirectory=/opt/cally/client/client
+ExecStart=/usr/bin/node node_modules/.bin/next start -p 3000
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`/etc/systemd/system/cally-worker.service`:**
+
+```ini
+[Unit]
+Description=Cally Background Worker
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=cally
+WorkingDirectory=/opt/cally/backend
+ExecStart=/usr/bin/node dist/workers/index.js
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable cally-api cally-web cally-worker
+sudo systemctl start cally-api cally-web cally-worker
+```
+
+### 6. Configure Caddy
+
+**`/etc/caddy/Caddyfile`:**
+
+```caddy
+your-domain.com {
+    # Frontend
+    reverse_proxy localhost:3000
+
+    # Backend API
+    handle /api/* {
+        reverse_proxy localhost:4000
+    }
+
+    # Health checks
+    handle /health {
+        reverse_proxy localhost:4000
+    }
+}
+```
+
+```bash
+sudo systemctl reload caddy
+```
+
+Caddy automatically provisions HTTPS certificates via Let's Encrypt.
+
+### 7. Verify
+
+```bash
+# Check API health
+curl https://your-domain.com/health
+
+# Check web frontend
+curl -I https://your-domain.com
+
+# Check systemd services
+sudo systemctl status cally-api cally-web cally-worker
+```
+
+## Maintenance
+
+### View Logs
+
+```bash
+# API logs
+sudo journalctl -u cally-api -f
+
+# Web logs
+sudo journalctl -u cally-web -f
+
+# Worker logs
+sudo journalctl -u cally-worker -f
+```
+
+### Update
+
+```bash
+cd /opt/cally
+git pull origin main
+cd client && bun install && bun run client:build
+cd ../backend && bun install && bunx prisma migrate deploy
+
+sudo systemctl restart cally-api cally-web cally-worker
+```
+
+### Backup
+
+```bash
+# PostgreSQL backup
+pg_dump -U cally cally > backup_$(date +%Y%m%d).sql
+
+# Environment files
+cp /opt/cally/client/.env /opt/cally/backend/.env /backups/
+```
+
+## Security Checklist
+
+- [ ] `BETTER_AUTH_SECRET` is at least 16 random characters
+- [ ] `MASTER_ENCRYPTION_KEY` is generated with `openssl rand -base64 32`
+- [ ] PostgreSQL uses a strong password
+- [ ] Redis is configured with `requirepass`
+- [ ] Caddy is configured with HTTPS (automatic)
+- [ ] Firewall allows only ports 80 and 443
+- [ ] `requireEmailVerification` is enabled in Settings if desired
+- [ ] `maintenanceMode` can be toggled to block non-admin access during updates

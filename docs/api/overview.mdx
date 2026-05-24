@@ -1,0 +1,173 @@
+---
+title: API Overview
+description: Base URL, authentication, error format, and conventions for the Cally REST API
+---
+
+# API Overview
+
+## Base URL
+
+```
+Production:  https://your-domain.com/api/v1
+Development: http://localhost:4000/api/v1
+```
+
+All API endpoints are prefixed with `/api/v1`. Authentication endpoints also exist under `/api/auth/*` (better-auth catch-all).
+
+## Authentication
+
+Most endpoints require authentication. Include credentials in one of two ways:
+
+### Cookie-based (Web Browser)
+
+The session cookie is set automatically after sign-in. Include `credentials: "include"` in fetch requests:
+
+```javascript
+const response = await fetch("http://localhost:4000/api/v1/users/me", {
+  credentials: "include",
+});
+```
+
+### Bearer Token (Mobile / API Client)
+
+Include the session token in the `Authorization` header:
+
+```bash
+curl http://localhost:4000/api/v1/users/me \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+## Content Type
+
+All request bodies must be `application/json` unless otherwise specified (e.g., file uploads use `multipart/form-data`).
+
+```bash
+curl -X POST http://localhost:4000/api/v1/events \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -d '{"title": "Team Standup", "start": "2026-05-25T09:00:00Z", "end": "2026-05-25T09:30:00Z"}'
+```
+
+## Error Format
+
+All errors follow the `ApiErrorResponse` schema defined in `@cally/contracts`:
+
+```typescript
+interface ApiErrorResponse {
+  code: string;       // Machine-readable error code
+  message: string;    // Human-readable error message
+  details: Record<string, unknown>;  // Additional context (default: {})
+}
+```
+
+Example error responses:
+
+```json
+// 401 Unauthorized
+{
+  "code": "UNAUTHORIZED",
+  "message": "You must be authenticated to access this resource",
+  "details": {}
+}
+
+// 404 Not Found
+{
+  "code": "NOT_FOUND",
+  "message": "Appointment type not found",
+  "details": {}
+}
+
+// 409 Conflict
+{
+  "code": "BOOKING_CONFLICT",
+  "message": "The selected time slot is no longer available",
+  "details": {
+    "start": "2026-05-25T09:00:00Z",
+    "end": "2026-05-25T09:30:00Z"
+  }
+}
+
+// 422 Validation Error
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid request body",
+  "details": {
+    "title": "String must contain at most 200 character(s)"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Status | Meaning |
+|---|---|
+| `200` | Success |
+| `201` | Created (for POST requests) |
+| `400` | Bad request (validation error) |
+| `401` | Unauthorized (missing or invalid credentials) |
+| `403` | Forbidden (authenticated but not authorized) |
+| `404` | Not found |
+| `409` | Conflict (e.g., booking slot taken) |
+| `422` | Unprocessable entity (validation failure) |
+| `500` | Internal server error |
+
+## Validation
+
+All request bodies are validated using **Zod schemas** from `@cally/contracts`. Invalid requests receive a `422` response with specific field errors in the `details` object.
+
+## Rate Limiting
+
+The following endpoint groups are rate-limited:
+
+| Group | Rate Limit |
+|---|---|
+| `/api/auth/*` | 10 requests/minute per IP |
+| `/api/booking/*` | 20 requests/minute per IP |
+| `/api/ai/*` | 30 requests/minute per user |
+
+Rate-limited responses include `Retry-After` headers:
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "message": "Too many requests. Please try again later.",
+  "details": {
+    "retryAfter": 60
+  }
+}
+```
+
+## Public vs Authenticated Endpoints
+
+| Endpoint | Authentication |
+|---|---|
+| `GET /health` | None |
+| `GET /api/v1/health` | None |
+| `GET /api/v1/public/book/:slug` | None |
+| `GET /api/v1/public/book/:slug/slots` | None |
+| `POST /api/v1/public/book/:slug` | None |
+| `GET /api/v1/auth/providers-list` | None |
+| All other `/api/v1/*` endpoints | **Required** |
+
+## API Client Helper (Frontend)
+
+The Next.js frontend uses the `apiJson` helper from `lib/api-client.ts`:
+
+```typescript
+import { apiJson } from "@/lib/api-client";
+
+// GET request
+const user = await apiJson<User>("/api/v1/users/me");
+
+// POST request
+const event = await apiJson<Event>("/api/v1/events", {
+  method: "POST",
+  body: JSON.stringify({ title: "Meeting", start: "...", end: "..." }),
+});
+```
+
+This helper:
+- Automatically prepends `NEXT_PUBLIC_BACKEND_URL` (defaults to `http://localhost:4000`)
+- Sets `Content-Type: application/json`
+- Includes `credentials: "include"` for cookies
+- Throws on non-2xx responses with parsed error details

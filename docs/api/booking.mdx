@@ -1,0 +1,197 @@
+---
+title: Booking API
+description: Public booking endpoints for appointment slots and booking creation
+---
+
+# Booking API
+
+Public (unauthenticated) endpoints for viewing booking pages and creating bookings. These endpoints are used by guests who do not have a Cally account.
+
+## Get Booking Page
+
+### GET /api/v1/public/book/:slug
+
+Retrieve the public booking page details for an appointment type.
+
+```bash
+curl http://localhost:4000/api/v1/public/book/john-doe
+```
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `slug` | string | The user's slug or the appointment type's slug |
+
+**Response** `200 OK`:
+
+```json
+{
+  "user": {
+    "id": "clxxxxxxxxxxxx",
+    "name": "John Doe",
+    "slug": "john-doe",
+    "timezone": "America/New_York"
+  },
+  "appointmentTypes": [
+    {
+      "id": "cltype001",
+      "name": "30 Minute Meeting",
+      "slug": "30min",
+      "duration": 30,
+      "description": "A quick 30-minute chat",
+      "color": "#6366F1",
+      "priceCents": null,
+      "meetingProvider": "meet"
+    }
+  ],
+  "availability": {
+    "1": [{ "startTime": "09:00", "endTime": "17:00" }],
+    "2": [{ "startTime": "09:00", "endTime": "17:00" }],
+    "3": [{ "startTime": "09:00", "endTime": "17:00" }],
+    "4": [{ "startTime": "09:00", "endTime": "17:00" }],
+    "5": [{ "startTime": "09:00", "endTime": "17:00" }]
+  }
+}
+```
+
+This endpoint does **not** require authentication.
+
+---
+
+## Get Available Slots
+
+### GET /api/v1/public/book/:slug/slots
+
+Retrieve available time slots for a specific appointment type within a date range.
+
+```bash
+curl "http://localhost:4000/api/v1/public/book/john-doe/30min/slots?start=2026-05-25&end=2026-05-31"
+```
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `slug` | string | The user's slug (in URL) or the appointment type slug |
+| `typeSlug` | string | The appointment type slug |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `start` | date | Yes | Start of the date range (YYYY-MM-DD) |
+| `end` | date | Yes | End of the date range (YYYY-MM-DD) |
+
+**Response** `200 OK`:
+
+```json
+{
+  "slots": [
+    {
+      "start": "2026-05-25T09:00:00Z",
+      "end": "2026-05-25T09:30:00Z"
+    },
+    {
+      "start": "2026-05-25T09:30:00Z",
+      "end": "2026-05-25T10:00:00Z"
+    },
+    {
+      "start": "2026-05-26T09:00:00Z",
+      "end": "2026-05-26T09:30:00Z"
+    }
+  ]
+}
+```
+
+### How Slots Are Computed
+
+Available slots are calculated by subtracting all blocking events:
+
+```
+Available Slots = Weekly Availability (for each day in range)
+               - Date Overrides (blocked dates)
+               - External Calendar Conflicts
+               - Existing Appointments (non-cancelled)
+               - Buffer Times (before/after existing appointments)
+               - Minimum Notice Requirement
+               - Max Per Day Limit
+```
+
+This endpoint does **not** require authentication.
+
+---
+
+## Create Booking
+
+### POST /api/v1/public/book/:slug
+
+Book an appointment on a public booking page.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/public/book/john-doe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appointmentTypeId": "cltype001",
+    "start": "2026-05-25T10:00:00Z",
+    "end": "2026-05-25T10:30:00Z",
+    "guestName": "Jane Smith",
+    "guestEmail": "jane@example.com",
+    "guestPhone": "+1234567890",
+    "guestNotes": "Looking forward to discussing the project"
+  }'
+```
+
+**Request Body** (`CreateBookingRequest`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `appointmentTypeId` | string | Yes | Valid appointment type ID |
+| `start` | string (datetime) | Yes | ISO 8601 datetime |
+| `end` | string (datetime) | Yes | ISO 8601 datetime |
+| `guestName` | string | Yes | 1-120 characters |
+| `guestEmail` | string (email) | Yes | Valid email address |
+| `guestPhone` | string | No | Max 50 characters |
+| `guestNotes` | string | No | Max 2000 characters |
+
+**Response** `201 Created`:
+
+```json
+{
+  "id": "clappt001",
+  "title": "30 Minute Meeting",
+  "start": "2026-05-25T10:00:00Z",
+  "end": "2026-05-25T10:30:00Z",
+  "status": "CONFIRMED",
+  "guestEmail": "jane@example.com",
+  "guestName": "Jane Smith",
+  "meetingLink": "https://meet.google.com/abc-defg-hij",
+  "appointmentTypeId": "cltype001"
+}
+```
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 404 | `NOT_FOUND` | User slug or appointment type not found |
+| 409 | `BOOKING_CONFLICT` | The selected time slot is no longer available |
+| 422 | `VALIDATION_ERROR` | Invalid request body (email format, date format, etc.) |
+
+### Booking Conflict Details
+
+When a slot is taken between the time the guest viewed it and the time they submitted the booking, the API returns:
+
+```json
+{
+  "code": "BOOKING_CONFLICT",
+  "message": "The selected time slot is no longer available",
+  "details": {
+    "start": "2026-05-25T10:00:00Z",
+    "end": "2026-05-25T10:30:00Z",
+    "suggestion": "Please refresh the page to see updated availability"
+  }
+}
+```

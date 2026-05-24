@@ -1,0 +1,85 @@
+---
+title: Stripe Payments
+description: Payment integration for paid appointments (planned feature)
+---
+
+# Stripe Payments
+
+Stripe integration for paid appointment bookings is **planned for Phase 1** of the v2 roadmap.
+
+## Planned Features
+
+### Stripe Checkout
+
+- Link appointment types to Stripe prices
+- When a guest books a paid appointment, redirect to Stripe Checkout
+- After successful payment, the appointment is confirmed
+- Support for deposits (partial payment) and full payments
+
+### Stripe Connect
+
+- Multi-tenant support: each organization connects their own Stripe account
+- Platform fee deducted automatically
+- Payouts to connected accounts on a configurable schedule
+
+### Data Model
+
+The Prisma schema already includes:
+
+```
+AppointmentType
+  ├── priceCents     Int?      # Price in cents (null = free)
+  ├── currency       String?   # ISO currency code (e.g., "USD")
+  ├── requiresPayment Boolean? # Whether payment is required
+  └── paymentType    String?   # "full" or "deposit"
+
+Payment
+  ├── appointmentId  String    # FK to Appointment
+  ├── amountCents    Int       # Payment amount
+  ├── currency       String    # ISO currency code
+  ├── stripePaymentIntentId String?  # Stripe PaymentIntent ID
+  ├── status         String    # "pending", "succeeded", "refunded"
+  └── refundedAt     DateTime? # When the payment was refunded
+
+StripeAccount
+  ├── organizationId String    # FK to Organization
+  ├── stripeAccountId String   # Stripe Connect account ID
+  └── chargesEnabled Boolean   # Whether charges are enabled
+```
+
+## Planned Booking Flow
+
+```
+1. Guest selects a paid appointment type
+2. Guest fills in booking details
+3. Server creates a Stripe Checkout Session
+4. Guest is redirected to Stripe Checkout
+5. After payment:
+   a. Stripe webhook → POST /api/v1/stripe/webhook
+   b. Server verifies the webhook signature
+   c. Server creates Payment record (status: "succeeded")
+   d. Appointment status is set to "CONFIRMED"
+   e. Confirmation email is queued
+6. If payment fails:
+   a. Appointment status remains "PENDING"
+   b. Guest is redirected back with an error message
+```
+
+## Planned Webhook Events
+
+| Stripe Event | Action |
+|---|---|
+| `checkout.session.completed` | Confirm appointment, create Payment record |
+| `payment_intent.succeeded` | Update Payment status |
+| `payment_intent.refunded` | Mark appointment as refund processed |
+| `account.updated` | Update StripeAccount chargesEnabled flag |
+
+## Environment Variables (Planned)
+
+```env .env
+STRIPE_SECRET_KEY="sk_live_..."
+STRIPE_PUBLISHABLE_KEY="pk_live_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+```
+
+The Stripe keys are not yet in the `.env.example` file and will be added when the feature is implemented.

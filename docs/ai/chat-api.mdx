@@ -1,0 +1,182 @@
+---
+title: AI Chat API
+description: Streaming chat endpoint and credential management for the AI assistant
+---
+
+# AI Chat API
+
+The AI chat API provides streaming conversation with the scheduling assistant, using the Vercel AI SDK and the user's stored credentials.
+
+## Chat Endpoint
+
+### POST /api/v1/ai/chat
+
+Send a message to the AI assistant and receive a streaming response.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/ai/chat \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "What times am I free next Tuesday afternoon?" }
+    ],
+    "model": "gpt-4.1",
+    "providerId": "openai"
+  }'
+```
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `messages` | array | Yes | Array of chat messages with `role` and `content` |
+| `model` | string | No | Model override (uses user's `defaultModel` if not specified) |
+| `providerId` | string | No | Provider override (uses user's first connected provider if not specified) |
+| `conversationId` | string | No | Continue an existing conversation |
+
+**Response:** Server-Sent Events (SSE) stream using the Vercel AI SDK streaming format.
+
+### Frontend Usage
+
+The Next.js client uses `@ai-sdk/react`'s `useChat` hook:
+
+```typescript
+import { useChat } from "@ai-sdk/react";
+
+function AIChat() {
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: `${getBackendUrl()}/api/v1/ai/chat`,
+    headers: { "Content-Type": "application/json" },
+    body: {
+      providerId: selectedProvider,
+      model: selectedModel,
+    },
+  });
+
+  return (
+    <div>
+      {messages.map((m) => (
+        <div key={m.id}>{m.role}: {m.content}</div>
+      ))}
+      <form onSubmit={handleSubmit}>
+        <input value={input} onChange={handleInputChange} />
+        <button type="submit" disabled={isLoading}>Send</button>
+      </form>
+    </div>
+  );
+}
+```
+
+## AI Tools
+
+The AI assistant has access to scheduling-related tools that allow it to take actions on behalf of the user:
+
+| Tool | Purpose |
+|---|---|
+| `getMyAvailability` | Resolve weekly hours + overrides + external busy times |
+| `findFreeSlots` | Given duration + time window, return N candidate slots |
+| `bookAppointment` | Create an internal appointment + push to external calendar |
+| `rescheduleAppointment` | Move an appointment with a reason; resync calendar |
+| `cancelAppointment` | Soft-cancel + send notification |
+| `summarizeMeeting` | Post-meeting summary from transcript/notes |
+| `draftFollowUp` | Suggest/send follow-up email |
+| `naturalLanguageBooking` | Parse "next Tuesday afternoon for 30 min" into a structured slot |
+
+Tool definitions use the Vercel AI SDK's `tools` configuration and are automatically injected into the streaming response when the model calls a tool.
+
+## Credential Management
+
+### List Credentials
+
+```bash
+curl http://localhost:4000/api/v1/ai/credentials \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "clcred001",
+    "providerId": "openai",
+    "defaultModel": "gpt-4.1",
+    "label": "Work OpenAI",
+    "lastTestedAt": "2026-05-24T10:30:00Z",
+    "lastTestedOk": true
+  }
+]
+```
+
+Note: The API key is never returned in the response.
+
+### Create Credential
+
+```bash
+curl -X POST http://localhost:4000/api/v1/ai/credentials \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "providerId": "anthropic",
+    "apiKey": "sk-ant-...",
+    "defaultModel": "claude-sonnet-4-6",
+    "label": "Personal Anthropic"
+  }'
+```
+
+The API key is encrypted with AES-256-GCM before storage. The server validates the key by making a test call to the provider before saving.
+
+**Response** `201 Created`:
+
+```json
+{
+  "id": "clcred002",
+  "providerId": "anthropic",
+  "defaultModel": "claude-sonnet-4-6",
+  "label": "Personal Anthropic",
+  "lastTestedAt": "2026-05-24T10:35:00Z",
+  "lastTestedOk": true
+}
+```
+
+### Delete Credential
+
+```bash
+curl -X DELETE http://localhost:4000/api/v1/ai/credentials/clcred002 \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true
+}
+```
+
+## Error Handling
+
+When the AI provider returns an error:
+
+```json
+{
+  "code": "AI_PROVIDER_ERROR",
+  "message": "Failed to connect to the AI provider. Please check your API key.",
+  "details": {
+    "providerId": "openai",
+    "statusCode": 401,
+    "providerMessage": "Incorrect API key provided"
+  }
+}
+```
+
+Common error scenarios:
+
+| Scenario | HTTP Status | Code | Message |
+|---|---|---|---|
+| Invalid API key | 401 | `AI_PROVIDER_ERROR` | "Please check your API key" |
+| Rate limited | 429 | `AI_PROVIDER_ERROR` | "Rate limit exceeded, please try again" |
+| Model not found | 404 | `AI_PROVIDER_ERROR` | "Model not found, please select a different model" |
+| No credentials stored | 400 | `AI_NO_CREDENTIALS` | "Please add an AI provider key in Settings" |
+| Provider down | 502 | `AI_PROVIDER_ERROR` | "AI provider is temporarily unavailable" |

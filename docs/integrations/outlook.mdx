@@ -1,0 +1,90 @@
+---
+title: Microsoft Outlook Calendar
+description: Connect and sync Outlook.com and Microsoft 365 calendars
+---
+
+# Microsoft Outlook Calendar
+
+Connect Outlook.com and Microsoft 365 calendars using the Microsoft Graph API.
+
+## Status
+
+Outlook calendar integration is **scaffolded** — the provider adapter, OAuth flow, and data mapper are implemented but not yet fully tested end-to-end.
+
+## Prerequisites
+
+1. An [Azure Portal](https://portal.azure.com/) app registration
+2. Microsoft Graph API permissions configured
+3. OAuth 2.0 redirect URIs configured
+
+## Setup
+
+### Step 1: Create Azure App Registration
+
+1. Go to [Azure Portal → App registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps)
+2. Click **New registration**
+3. Set the redirect URI:
+
+| Type | URI |
+|---|---|
+| Web | `{APP_URL}/api/auth/callback/microsoft` |
+| Web | `{APP_URL}/api/integrations/microsoft/callback` |
+
+4. Under **API permissions**, add:
+   - `User.Read` (Delegated)
+   - `Calendars.Read` (Delegated)
+   - `Calendars.ReadWrite` (Delegated)
+   - `offline_access` (Delegated)
+
+5. Under **Certificates & secrets**, create a new client secret
+
+### Step 2: Configure Environment Variables
+
+```env .env
+MICROSOFT_CLIENT_ID="your-app-client-id"
+MICROSOFT_CLIENT_SECRET="your-app-client-secret"
+```
+
+## Provider Architecture
+
+The Outlook calendar provider implements the `CalendarProviderAdapter` interface:
+
+```typescript
+// src/providers/outlook-calendar/adapter.ts
+export class OutlookCalendarAdapter implements CalendarProviderAdapter {
+  async listCalendars(accessToken: string): Promise<ExternalCalendar[]>;
+  async fullSync(accountId: string, calendarId: string): Promise<SyncResult>;
+  async incrementalSync(accountId: string, calendarId: string, deltaToken: string): Promise<SyncResult>;
+}
+```
+
+### Key Differences from Google
+
+| Feature | Google Calendar | Microsoft Outlook |
+|---|---|---|
+| API | `googleapis` npm package | Microsoft Graph REST API |
+| Sync mechanism | Sync tokens + webhooks | Delta tokens + change notifications |
+| Calendar list | `calendarList.list()` | `GET /me/calendars` |
+| Events | `events.list()` | `GET /me/calendars/{id}/calendarView` |
+| Push notifications | Webhook channels (1 week) | Change notifications (configurable TTL) |
+| Polling | Via sync tokens | Via delta links |
+
+## Data Mapping
+
+The Outlook mapper (`src/providers/outlook-calendar/mapper.ts`) converts Microsoft Graph event format to Cally's `ExternalEvent` format:
+
+| Microsoft Graph | Cally ExternalEvent |
+|---|---|
+| `id` | `externalId` |
+| `iCalUId` | `iCalUid` |
+| `subject` | `summary` |
+| `start.dateTime` | `start` |
+| `end.dateTime` | `end` |
+| `isAllDay` | `allDay` |
+| `bodyPreview` | `description` (stored in future) |
+
+## Current Limitations
+
+- **Outbound sync** (pushing Cally events to Outlook) is planned for Phase 1
+- **Microsoft Teams meeting links** require the `onlineMeetings` Graph permission
+- **Delta token expiration** handling follows the same pattern as Google's `410 Gone` — falls back to full sync

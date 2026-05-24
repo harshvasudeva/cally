@@ -1,0 +1,137 @@
+---
+title: AI Overview
+description: BYO-key AI architecture, encryption model, and provider factory
+---
+
+# AI Overview
+
+Cally uses a **Bring-Your-Own-Key (BYO-key)** model for AI chat. Each user provides their own API key for their preferred provider, and keys are encrypted at rest with AES-256-GCM.
+
+## Architecture
+
+```
++----------------------------------+
+|  User Settings (/settings/ai)    |
+|  Select provider -> Paste key   |
++----------------+-----------------+
+                 | POST /api/v1/ai/credentials
+                 v
++----------------------------------+
+|  AES-256-GCM Encryption         |
+|  MASTER_ENCRYPTION_KEY (env)    |
++----------------+-----------------+
+                 | Store encrypted in UserAICredential
+                 v
++----------------------------------+
+|  Chat (/ai)                      |
+|  POST /api/v1/ai/chat            |
++----------------+-----------------+
+                 | Decrypt key -> resolve provider
+                 v
++----------------------------------+
+|  Provider Factory                |
+|  createOpenAI / createAnthropic  |
+|  createGoogle / createGroq      |
+|  createMistral / createOpenRouter|
+|  createOpenAICompatible (Ollama) |
++----------------+-----------------+
+                 | streamText() via Vercel AI SDK
+                 v
++----------------------------------+
+|  AI Provider (OpenAI, etc.)     |
++----------------------------------+
+```
+
+## Key Principles
+
+### No Vendor Lock-In
+
+Users can switch between providers at any time. The Vercel AI SDK provides a unified interface so the chat experience is identical regardless of the underlying model.
+
+### Privacy First
+
+- API keys are encrypted at rest using AES-256-GCM
+- The `MASTER_ENCRYPTION_KEY` is stored in the environment and never exposed to the client
+- Keys are decrypted only on the server when making API calls
+- Keys are never logged or included in error messages
+
+### Cost Transparency
+
+Every AI call writes an `AIUsageLog` entry tracking:
+- Input and output token counts
+- Model and provider used
+- Estimated cost in cents
+- Latency in milliseconds
+
+This enables admin dashboards showing per-user and per-org spending.
+
+### Graceful Error Handling
+
+When a provider returns a 4xx or 5xx error:
+- The error is surfaced in the chat UI as a user-friendly message
+- If the error indicates an invalid API key, the user is directed to update their key in Settings
+- No crashes, no unhandled promise rejections
+
+## Provider Factory
+
+```typescript
+// src/lib/ai/providers.ts (conceptual)
+export function getModel(cred: UserAICredential, modelId: string) {
+  const key = decrypt(cred.apiKeyEnc);
+  switch (cred.providerId) {
+    case "openai":     return createOpenAI({ apiKey: key })(modelId);
+    case "anthropic":  return createAnthropic({ apiKey: key })(modelId);
+    case "google":     return createGoogleGenerativeAI({ apiKey: key })(modelId);
+    case "groq":       return createGroq({ apiKey: key })(modelId);
+    case "mistral":    return createMistral({ apiKey: key })(modelId);
+    case "openrouter": return createOpenAICompatible({ baseURL: "https://openrouter.ai/api/v1", apiKey: key })(modelId);
+    case "ollama":     return createOpenAICompatible({ baseURL: cred.baseUrl!, apiKey: "ollama" })(modelId);
+  }
+}
+```
+
+## Data Model
+
+### UserAICredential
+
+Each user can have one credential per provider (plus optional labels for multiple keys):
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `providerId` | String | Provider identifier (e.g. `"openai"`) |
+| `apiKeyEnc` | String | AES-256-GCM encrypted API key |
+| `defaultModel` | String? | Default model ID for this provider |
+| `baseUrl` | String? | Custom base URL (for Ollama/OpenRouter) |
+| `label` | String? | User-friendly label for the key |
+| `lastTestedAt` | DateTime? | Last successful key validation |
+| `lastTestedOk` | Boolean? | Whether the key was valid on last test |
+
+Unique constraint on `(userId, providerId, label)`.
+
+### AIConversation
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `credentialId` | String? | Foreign key → UserAICredential |
+| `title` | String? | Conversation title |
+| `pinned` | Boolean | Whether the conversation is pinned |
+
+### AIMessage
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `conversationId` | String | Foreign key → AIConversation |
+| `role` | String | `"user"`, `"assistant"`, `"system"`, `"tool"` |
+| `content` | String? | Message text |
+| `toolCalls` | Json? | Tool call data |
+| `toolResults` | Json? | Tool result data |
+| `model` | String? | Model used for this message |
+| `provider` | String? | Provider used |
+| `inputTokens` | Int? | Input token count |
+| `outputTokens` | Int? | Output token count |
+| `costCents` | Int? | Estimated cost in cents |

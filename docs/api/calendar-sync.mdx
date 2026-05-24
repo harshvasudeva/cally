@@ -1,0 +1,199 @@
+---
+title: Calendar Sync Engine
+description: How the calendar sync engine works with BullMQ workers and provider adapters
+---
+
+# Calendar Sync Engine
+
+The calendar sync engine keeps external calendar events in sync with Cally's database using BullMQ workers and provider-specific adapters.
+
+## Architecture
+
+```
+External Provider (Google/Outlook/CalDAV)
+        |
+        | Webhook/Delta/Poll
+        v
++------------------------+
+|  API Route Handler     |
+|  /api/v1/integrations  |
++-----------+------------+
+            | Enqueue BullMQ Job
+            v
++------------------------+
+|  calendar-sync Worker   |  <-- Concurrency: 5
+|  (calendar-sync queue)  |
++-----------+------------+
+            | Process Job
+            v
++------------------------+
+|  Provider Adapter       |
+|  (Google/Outlook/CalDAV)|
++-----------+------------+
+            | Upsert ExternalEvents
+            v
++------------------------+
+|  PostgreSQL             |
+|  ExternalEvent          |
+|  ExternalCalendar       |
+|  CalendarAccount        |
++------------------------+
+```
+
+## Job Types
+
+The `calendar-sync` BullMQ queue processes two job types:
+
+### Full Sync
+
+```json
+{
+  "type": "full-sync",
+  "calendarAccountId": "clcalacct001",
+  "externalCalendarId": "clcal001"
+}
+```
+
+Triggered when:
+- A new calendar account is connected
+- An incremental sync receives a `410 Gone` (expired sync token)
+- Manually triggered by the user
+
+### Incremental Sync
+
+```json
+{
+  "type": "incremental-sync",
+  "calendarAccountId": "clcalacct001",
+  "externalCalendarId": "clcal001"
+}
+```
+
+Triggered when:
+- A webhook notification is received from the provider
+- A scheduled poll fires (CalDAV)
+
+## Sync Flow — Google Calendar
+
+### 1. Connect
+
+```
+User clicks "Connect Google Calendar"
+  → GET /api/integrations/google/connect
+    → Redirect to Google OAuth with calendar scopes
+    → GET /api/integrations/google/callback?code=...
+      → Exchange code for tokens
+      → Encrypt tokens (AES-256-GCM)
+      → Create CalendarAccount row
+      → List calendars → create ExternalCalendar rows
+      → Enqueue full-sync job
+```
+
+### 2. Full Sync
+
+```
+Worker receives full-sync job
+  → Call Google events.list() with no syncToken
+  → Upsert all events as ExternalEvent rows
+  → Store nextSyncToken on the ExternalCalendar
+  → Call events.watch() to subscribe to push notifications
+  → Store webhookChannelId and webhookExpiresAt
+```
+
+### 3. Incremental Sync (Webhook-triggered)
+
+```
+Google sends webhook ping
+  → POST /api/integrations/google/webhook
+    → Verify X-Goog-Channel-Token
+    → Enqueue delta-sync(accountId)
+      → Worker calls events.list({ syncToken })
+        → Upsert new/updated ExternalEvents
+        → Delete cancelled ExternalEvents
+        → Update syncToken
+        → If 410 Gone → enqueue full-sync
+```
+
+### 4. Channel Renewal
+
+A daily job checks all `webhookExpiresAt` values and renews channels that expire within 1 hour.
+
+## Conflict Detection
+
+When computing public booking availability, the system subtracts the intersection of:
+
+1. **`Appointment`** — existing appointments (status ≠ CANCELLED)
+2. **`ExternalEvent`** — events from selected external calendars
+3. **`DateOverride`** — blocked dates
+4. **Buffer times** — bufferBefore and bufferAfter from appointment types
+5. **Holidays** — provider-specific holidays (via Calendarific API)
+
+```typescript
+function getAvailableSlots(
+  user: User,
+  appointmentType: AppointmentType,
+  dateRange: DateRange
+): TimeSlot[] {
+  const weeklySlots = getWeeklyAvailability(user, dateRange);
+  const overrides = getDateOverrides(user, dateRange);
+  const externalBusy = getExternalEvents(user, dateRange);
+  const appointments = getAppointments(user, dateRange);
+
+  return subtractConflicts(weeklySlots, [
+    ...overrides,
+    ...externalBusy,
+    ...appointments,
+    ...getBufferTimes(appointments),
+  ]);
+}
+```
+
+## Outbound Sync (Planned)
+
+When an `Appointment` is created/updated/cancelled in Cally, the system will push the event to the user's primary external calendar:
+
+```
+Appointment created/updated/cancelled
+  → Enqueue push-event(appointmentId)
+    → Create/update/delete event on external calendar
+    → Set extendedProperties.private.callyAppointmentId for dedup
+    → Inbound webhook handler ignores echoed events within 5 minutes
+```
+
+## Worker Configuration
+
+The calendar-sync worker runs as a separate process:
+
+```bash
+# Development
+bun run worker:dev
+
+# Production
+node dist/workers/index.js
+```
+
+Worker settings:
+- **Queue name:** `calendar-sync`
+- **Concurrency:** 5
+- **Redis:** `REDIS_URL` environment variable (default: `redis://localhost:6379`)
+- **Retry:** 3 attempts with exponential backoff
+
+## Queue Infrastructure
+
+```typescript
+// src/infrastructure/queue.ts
+import { Queue } from "bullmq";
+
+export const calendarSyncQueue = new Queue("calendar-sync", {
+  connection: { host: "localhost", port: 6379 },
+});
+```
+
+Jobs are enqueued with:
+```typescript
+await calendarSyncQueue.add("sync", {
+  type: "full-sync",
+  calendarAccountId: "clcalacct001",
+  externalCalendarId: "clcal001",
+});
+```

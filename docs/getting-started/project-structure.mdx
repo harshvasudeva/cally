@@ -1,0 +1,122 @@
+---
+title: Project Structure
+description: Overview of the Cally monorepo layout and key files
+---
+
+# Project Structure
+
+Cally is organized as a monorepo with three main packages:
+
+```
+cally/
+├── client/                    # Root workspace package.json
+│   ├── client/                # Next.js frontend (@cally/client)
+│   │   ├── src/
+│   │   │   ├── app/           # Next.js App Router pages
+│   │   │   │   ├── admin/     # Admin panel (audit, settings, users)
+│   │   │   │   ├── ai/        # AI chat interface
+│   │   │   │   ├── appointment-types/  # Booking type CRUD
+│   │   │   │   ├── appointments/       # Appointment management
+│   │   │   │   ├── availability/       # Weekly availability
+│   │   │   │   ├── book/[slug]/        # Public booking pages
+│   │   │   │   ├── calendar/           # Calendar view (FullCalendar)
+│   │   │   │   ├── dashboard/          # Dashboard with stats
+│   │   │   │   ├── date-overrides/     # Date override management
+│   │   │   │   ├── import/             # ICS file import
+│   │   │   │   ├── login/              # Login page
+│   │   │   │   ├── organizations/      # Organization management
+│   │   │   │   ├── register/           # Registration page
+│   │   │   │   ├── settings/           # Settings pages
+│   │   │   │   │   ├── ai/             # AI provider settings
+│   │   │   │   │   ├── api-keys/       # API key management
+│   │   │   │   │   ├── domains/        # Domain & SSL
+│   │   │   │   │   ├── integrations/   # Calendar integrations
+│   │   │   │   │   ├── notifications/  # Notification preferences
+│   │   │   │   │   └── profile/        # Profile settings
+│   │   │   │   └── streams/            # iCal stream subscriptions
+│   │   │   ├── components/    # React components
+│   │   │   │   ├── calendar/  # CalendarView, ConflictResolver, EventModal
+│   │   │   │   └── ui/        # Reusable UI primitives (Button, Card, Modal, etc.)
+│   │   │   ├── lib/           # Client-side utilities
+│   │   │   │   ├── api-client.ts       # apiFetch / apiJson helpers
+│   │   │   │   ├── auth-client.ts      # better-auth React client
+│   │   │   │   └── auth-react-compat.tsx # NextAuth compatibility shim
+│   │   │   └── types/         # TypeScript interfaces
+│   │   └── package.json      # @cally/client
+│   ├── packages/
+│   │   └── contracts/         # Shared Zod schemas (@cally/contracts)
+│   │       └── src/
+│   │           ├── index.ts   # Barrel re-export
+│   │           ├── auth.ts    # SessionUser schema
+│   │           ├── users.ts   # UpdateUserProfileRequest
+│   │           ├── events.ts  # Create/Update event schemas
+│   │           ├── availability.ts  # Availability slot schemas
+│   │           ├── booking.ts # CreateBookingRequest
+│   │           ├── appointments.ts   # UpdateAppointmentRequest
+│   │           ├── calendar-accounts.ts # Provider enum + DTO
+│   │           └── errors.ts  # ApiErrorResponse schema
+│   └── package.json           # Root workspace config
+│
+└── backend/                   # Fastify API server (@cally/backend)
+    ├── src/
+    │   ├── app.ts             # Fastify app builder & route registration
+    │   ├── server.ts          # Entry point
+    │   ├── generated/prisma/  # Generated Prisma client
+    │   ├── infrastructure/    # Cross-cutting concerns
+    │   │   ├── auth.ts        # better-auth configuration
+    │   │   ├── db.ts          # Prisma client (pg adapter + pool)
+    │   │   ├── env.ts         # Zod-validated env config
+    │   │   ├── errors.ts      # Custom error classes
+    │   │   ├── logger.ts      # Logger
+    │   │   ├── queue.ts       # BullMQ queue setup
+    │   │   └── validation.ts  # Zod DTO parser helper
+    │   ├── modules/           # Domain modules (each has routes, service, repository, schemas, types)
+    │   │   ├── appointments/
+    │   │   ├── auth/
+    │   │   ├── availability/
+    │   │   ├── booking/
+    │   │   ├── calendar-accounts/
+    │   │   ├── calendar-sync/
+    │   │   ├── events/
+    │   │   └── users/
+    │   ├── providers/          # Calendar provider adapters
+    │   │   ├── types.ts        # CalendarProviderAdapter interface
+    │   │   ├── google-calendar/
+    │   │   ├── outlook-calendar/
+    │   │   └── caldav/
+    │   └── workers/            # BullMQ workers
+    │       ├── index.ts
+    │       └── calendar-sync.worker.ts
+    ├── prisma/
+    │   └── schema.prisma      # 24 models, PostgreSQL
+    └── package.json           # @cally/backend
+```
+
+## Module Architecture
+
+Each domain module in the backend follows a consistent layered pattern:
+
+```
+modules/<domain>/
+├── routes.ts       # Fastify route definitions + validation
+├── schemas.ts      # Zod request/response schemas
+├── service.ts       # Business logic
+├── repository.ts    # Database queries (Prisma)
+└── types.ts         # TypeScript type definitions
+```
+
+This separation ensures:
+- **Routes** handle HTTP concerns (headers, status codes, cookies)
+- **Services** contain pure business logic
+- **Repositories** encapsulate database access
+- **Schemas** define validated data shapes using Zod
+- **Types** provide TypeScript interfaces for the domain
+
+## Package Dependencies
+
+```
+@cally/client  ──depends-on──>  @cally/contracts
+@cally/backend ──depends-on──>  @cally/contracts
+```
+
+The `@cally/contracts` package is the **single source of truth** for API request/response shapes. Both the client and backend import Zod schemas from this package to ensure type-safe, runtime-validated data transfer.

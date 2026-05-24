@@ -1,0 +1,131 @@
+---
+title: Installation
+description: Get Cally running locally in under 5 minutes
+---
+
+# Installation
+
+## Prerequisites
+
+| Dependency | Version | Notes |
+|---|---|---|
+| **Node.js** | 20+ | LTS recommended |
+| **Bun** | 1.3+ | Package manager (used instead of npm/yarn) |
+| **PostgreSQL** | 16+ | Required for Prisma 7 |
+| **Redis** | 7+ | Required for BullMQ background workers |
+
+## Install
+
+```bash
+# Clone the repository
+git clone https://github.com/harshvasudeva/cally.git
+cd cally/client
+
+# Install all workspace dependencies
+bun install
+```
+
+## Configure Environment
+
+```bash
+# Copy the example env file
+cp .env.example .env
+```
+
+Edit `.env` and set the required values — see [Environment Variables](/getting-started/environment-variables) for the full reference.
+
+At minimum, you need:
+
+```env .env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cally"
+BETTER_AUTH_SECRET="change-me-to-a-long-random-secret-at-least-16-chars"
+BETTER_AUTH_URL="http://localhost:4000"
+NEXT_PUBLIC_BACKEND_URL="http://localhost:4000"
+```
+
+## Set Up the Database
+
+```bash
+# Run Prisma migrations
+bunx prisma migrate dev --name init
+
+# Generate the Prisma client
+bunx prisma generate
+```
+
+## Start Development Servers
+
+Cally runs two processes: the **Next.js frontend** and the **Fastify API backend**.
+
+```bash
+# Terminal 1 — Start the frontend (port 3000)
+cd client
+bun run dev
+
+# Terminal 2 — Start the backend API (port 4000)
+cd backend
+bun run dev
+
+# Terminal 3 — Start the background worker (optional, for calendar sync)
+cd backend
+bun run worker:dev
+```
+
+Or from the monorepo root:
+
+```bash
+# Frontend only
+bun run client:dev
+
+# Backend only
+bun run backend:dev
+
+# Worker only
+bun run worker:dev
+```
+
+## Create Your First Account
+
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Admin","email":"admin@example.com","password":"YourSecurePass123"}'
+```
+
+Or navigate to `http://localhost:3000/register` in your browser.
+
+## Verify Everything Works
+
+| Check | URL |
+|---|---|
+| Frontend | `http://localhost:3000` |
+| Backend health | `http://localhost:4000/health` |
+| API v1 health | `http://localhost:4000/api/v1/health` |
+| Auth session | `http://localhost:3000/api/auth/get-session` |
+
+## Common Issues
+
+### Database Connection Errors
+
+Ensure PostgreSQL is running and `DATABASE_URL` is correct:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT 1;"
+```
+
+### Redis Connection Errors
+
+Ensure Redis is running:
+
+```bash
+redis-cli ping
+# Should return: PONG
+```
+
+### Port Already in Use
+
+```bash
+# Check what's using a port
+lsof -i :3000   # Frontend
+lsof -i :4000   # Backend
+```

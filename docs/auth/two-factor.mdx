@@ -1,0 +1,124 @@
+---
+title: Two-Factor Authentication
+description: Configure TOTP two-factor authentication and WebAuthn passkeys
+---
+
+# Two-Factor Authentication
+
+Cally supports two methods of two-factor authentication:
+
+| Method | Status | Storage |
+|---|---|---|
+| **TOTP** (Time-based One-Time Password) | Scaffolded (UI pending) | Encrypted in `TwoFactor` table |
+| **WebAuthn / Passkeys** | Scaffolded (UI pending) | Stored in `Passkey` table |
+
+## TOTP Two-Factor Authentication
+
+TOTP uses authenticator apps like Google Authenticator, Authy, or 1Password.
+
+### Enable TOTP
+
+```bash
+POST /api/auth/two-factor/enable
+Content-Type: application/json
+
+# Response includes TOTP URI and backup codes
+```
+
+### Verify TOTP
+
+```bash
+POST /api/auth/two-factor/verify
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+```
+
+### Disable TOTP
+
+```bash
+POST /api/auth/two-factor/disable
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+```
+
+### Security
+
+- The TOTP secret is encrypted at rest using AES-256-GCM
+- Backup codes are also encrypted at rest
+- The `TwoFactor` row has a unique constraint on `userId` — each user can have at most one TOTP configuration
+
+## WebAuthn / Passkeys
+
+Passkeys use device biometrics (fingerprint, face ID) or hardware security keys for passwordless authentication.
+
+### Register a Passkey
+
+```bash
+POST /api/auth/passkey/register
+Content-Type: application/json
+
+# Returns WebAuthn registration options (challenge, rpId, etc.)
+```
+
+### Authenticate with Passkey
+
+```bash
+POST /api/auth/passkey/authenticate
+Content-Type: application/json
+
+# Returns WebAuthn authentication options
+```
+
+### List Passkeys
+
+```bash
+GET /api/auth/passkey/list
+
+# Returns all registered passkeys for the current user
+```
+
+### Delete a Passkey
+
+```bash
+POST /api/auth/passkey/delete
+Content-Type: application/json
+
+{
+  "id": "passkey_id"
+}
+```
+
+## Data Models
+
+### TwoFactor
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Unique, foreign key → User |
+| `secret` | String | AES-256-GCM encrypted TOTP secret |
+| `backupCodes` | String? | Encrypted backup codes |
+
+### Passkey
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String (cuid) | Primary key |
+| `userId` | String | Foreign key → User |
+| `credentialId` | String | Unique WebAuthn credential ID |
+| `publicKey` | Bytes | WebAuthn public key |
+| `counter` | Int | Sign count for replay protection |
+| `transports` | String? | Allowed transports (e.g. "internal", "usb") |
+| `backedUp` | Boolean | Whether the key is device-backed |
+
+## Implementation Status
+
+Both TOTP and WebAuthn are **scaffolded** in the database schema and better-auth configuration but are not yet fully implemented in the UI. The underlying better-auth endpoints are functional and can be tested via API calls directly.
+
+The `User.twoFactorEnabled` flag is set when a user successfully enables and verifies TOTP. The sign-in flow checks this flag and requires a second factor when enabled.

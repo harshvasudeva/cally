@@ -1,0 +1,188 @@
+---
+title: Background Workers
+description: BullMQ worker architecture, job types, and queue configuration
+---
+
+# Background Workers
+
+Cally uses **BullMQ** with **Redis** for background job processing. Workers run as a separate Node.js process for calendar synchronization, reminders, email, and AI usage logging.
+
+## Architecture
+
+```
++----------------------+       +------------------+       +---------------+
+|  Fastify API Server  |------>|  Redis 7          |------>|  Worker       |
+|  (enqueues jobs)      |       |  (BullMQ queues)  |       |  (processes)  |
++----------------------+       +------------------+       +---------------+
+```
+
+- The **API server** enqueues jobs when events occur (e.g., a calendar account is connected)
+- **Redis** stores the job queues and their state
+- The **Worker process** picks up jobs and executes them
+
+## Starting the Worker
+
+### Development
+
+```bash
+cd backend
+bun run worker:dev
+```
+
+This runs the worker with hot-reload via `tsx watch`.
+
+### Production
+
+```bash
+node dist/workers/index.js
+```
+
+Or via systemd:
+```bash
+sudo systemctl start cally-worker
+```
+
+Or via Docker Compose:
+```bash
+docker compose up -d worker
+```
+
+## Queue Configuration
+
+The worker connects to Redis using the `REDIS_URL` environment variable (default: `redis://localhost:6379`).
+
+```typescript
+// src/infrastructure/queue.ts
+import { Queue } from "bullmq";
+
+export const calendarSyncQueue = new Queue("calendar-sync", {
+  connection: {
+    host: process.env.REDIS_URL ? undefined : "localhost",
+    port: process.env.REDIS_URL ? undefined : 6379,
+    url: process.env.REDIS_URL,
+  },
+});
+```
+
+## Job Types
+
+### Calendar Sync Queue (`calendar-sync`)
+
+| Job Type | Trigger | Description |
+|---|---|---|
+| `full-sync` | On calendar connect, on 410 Gone | Full sync of all events from an external calendar |
+| `incremental-sync` | On webhook notification, on scheduled poll | Delta sync using sync tokens or delta tokens |
+
+#### Full Sync Job
+
+```json
+{
+  "type": "full-sync",
+  "calendarAccountId": "clcalacct001",
+  "externalCalendarId": "clcal001"
+}
+```
+
+**Process:**
+1. Call the provider's `events.list()` without a sync token
+2. Upsert all events as `ExternalEvent` records
+3. Store `nextSyncToken` on the `ExternalCalendar` row
+4. For Google: call `events.watch()` to subscribe to push notifications
+5. Update `CalendarAccount.lastSyncAt` and `syncStatus = "idle"`
+
+#### Incremental Sync Job
+
+```json
+{
+  "type": "incremental-sync",
+  "calendarAccountId": "clcalacct001",
+  "externalCalendarId": "clcal001"
+}
+```
+
+**Process:**
+1. Call the provider's `events.list({ syncToken })` or delta query
+2. Upsert new/updated events, delete cancelled events
+3. Update the sync token
+4. If the provider returns `410 Gone` (Google) or an expired delta link (Outlook), enqueue a `full-sync` job
+
+### Planned Queues (Phase 1+)
+
+| Queue | Job | Trigger | Description |
+|---|---|---|---|
+| `calendar-sync` | `push-event(apptId)` | On appointment write | Push Cally event to external calendar |
+| `calendar-sync` | `renew-channel(acctId)` | Hourly check | Renew Google webhook channels before expiry |
+| `reminders` | `send-reminder(apptId)` | T-24h, T-1h before start | Send appointment reminder email |
+| `email` | `send(template, to, ctx)` | On demand | Send templated emails (confirmation, reminder) |
+| `ai-usage` | `log(usage)` | After AI call | Log token counts and estimated cost |
+| `webhook-out` | `dispatch(webhookId)` | On user-defined events | Fire outbound webhooks |
+
+## Worker Configuration
+
+```typescript
+// src/workers/calendar-sync.worker.ts
+import { Worker } from "bullmq";
+
+const worker = new Worker("calendar-sync", async (job) => {
+  const result = await runCalendarSyncJob(job.data);
+  return result;
+}, {
+  connection: { url: env.REDIS_URL },
+  concurrency: 5,
+});
+```
+
+| Setting | Value | Description |
+|---|---|---|
+| Concurrency | 5 | Process up to 5 jobs simultaneously |
+| Retry attempts | 3 | Exponential backoff on failure |
+| Backoff | Exponential | `2^(attempt-1) * 1000` ms |
+
+## Error Handling
+
+When a job fails:
+
+1. The error is logged with the job ID and data
+2. BullMQ retries up to 3 times with exponential backoff
+3. After all retries are exhausted, the job is moved to the `failed` queue
+4. `CalendarAccount.syncStatus` is set to `"error"`
+5. An admin can manually retry failed jobs via the BullMQ dashboard
+
+## Monitoring
+
+### Health Check
+
+```bash
+# Check worker health by verifying Redis connection
+redis-cli ping
+# PONG
+
+# Check queue depth
+redis-cli LLEN bull:calendar-sync:wait
+# Returns number of waiting jobs
+```
+
+### BullMQ Dashboard
+
+For development and monitoring, you can run the Bull Board UI:
+
+```bash
+npx @bull-board/api @bull-board/express
+```
+
+Or integrate it into the Fastify server for a unified admin dashboard.
+
+## Redis Requirements
+
+- **Version**: 7.0+
+- **Memory**: At least 256MB for typical workloads
+- **Persistence**: Enable AOF or RDB snapshots for job durability
+- **TLS**: Use `rediss://` scheme for encrypted connections (required for Upstash and cloud providers)
+
+## Scaling
+
+To increase processing throughput:
+
+1. **Increase concurrency**: Change `concurrency` in the worker options
+2. **Add more workers**: Run multiple worker processes (they share the same queue)
+3. **Separate queues**: Move high-priority jobs (like webhooks) to a separate queue with dedicated workers

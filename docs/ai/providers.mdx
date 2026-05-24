@@ -1,0 +1,204 @@
+---
+title: AI Providers
+description: Supported AI providers, models, and configuration instructions
+---
+
+# AI Providers
+
+Cally supports 7 AI providers. Each user picks one provider, pastes their API key, and optionally selects a default model.
+
+## Supported Providers
+
+### OpenAI
+
+```env
+Provider: openai
+Base URL: https://api.openai.com/v1 (default)
+```
+
+| Model | Capabilities |
+|---|---|
+| `gpt-5.2` | chat, tools, vision, json |
+| `gpt-5.1` | chat, tools, vision, json |
+| `gpt-5` | chat, tools, vision, json |
+| `gpt-4.1` | chat, tools, vision, json |
+| `gpt-4o` | chat, tools, vision, json |
+| `gpt-4o-mini` | chat, tools, json |
+
+**Get an API key:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+
+---
+
+### Anthropic
+
+```env
+Provider: anthropic
+Base URL: https://api.anthropic.com/v1 (default)
+```
+
+| Model | Capabilities |
+|---|---|
+| `claude-sonnet-4-6` | chat, tools, vision, json |
+| `claude-opus-4-6` | chat, tools, vision, json |
+| `claude-haiku-4-5` | chat, tools, vision, json |
+
+**Get an API key:** [console.anthropic.com](https://console.anthropic.com/)
+
+---
+
+### Google Gemini
+
+```env
+Provider: google
+Base URL: (handled by SDK, default)
+```
+
+| Model | Capabilities |
+|---|---|
+| `gemini-3.1-pro` | chat, tools, vision, json |
+| `gemini-3-flash` | chat, tools, vision, json |
+| `gemini-2.5-pro` | chat, tools, vision, json |
+
+**Get an API key:** [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+
+---
+
+### Groq
+
+```env
+Provider: groq
+Base URL: https://api.groq.com/openai/v1 (default)
+```
+
+| Model | Capabilities |
+|---|---|
+| `llama-3.3-70b-versatile` | chat, tools |
+| `mixtral-8x7b-32768` | chat, tools |
+
+**Get an API key:** [console.groq.com](https://console.groq.com/)
+
+---
+
+### Mistral
+
+```env
+Provider: mistral
+Base URL: https://api.mistral.ai/v1 (default)
+```
+
+| Model | Capabilities |
+|---|---|
+| `mistral-large-latest` | chat, tools, json |
+| `mistral-small-latest` | chat, tools, json |
+| `codestral-latest` | chat, tools |
+
+**Get an API key:** [console.mistral.ai](https://console.mistral.ai/)
+
+---
+
+### OpenRouter
+
+```env
+Provider: openrouter
+Base URL: https://openrouter.ai/api/v1 (default)
+```
+
+OpenRouter provides access to hundreds of models through a single API key. The model ID is passed through to OpenRouter.
+
+| Model | Capabilities |
+|---|---|
+| Any model on OpenRouter | chat, tools |
+
+**Get an API key:** [openrouter.ai/keys](https://openrouter.ai/keys)
+
+---
+
+### Ollama (Self-Hosted)
+
+```env
+Provider: ollama
+Base URL: http://localhost:11434/v1 (user-configurable)
+```
+
+Ollama allows running models locally. Users must provide their own base URL.
+
+| Model | Capabilities |
+|---|---|
+| Any locally running model | chat |
+
+**Setup:** [ollama.com](https://ollama.com/)
+
+When using Ollama, the `baseUrl` field is required. The `apiKey` is set to `"ollama"` (Ollama doesn't require authentication by default).
+
+## Configuration
+
+### Adding a Provider Key
+
+In the app, navigate to **Settings → AI** or use the API:
+
+```bash
+curl -X POST http://localhost:4000/api/v1/ai/credentials \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "providerId": "openai",
+    "apiKey": "sk-proj-...",
+    "defaultModel": "gpt-4.1"
+  }'
+```
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `providerId` | string | Yes | One of: `openai`, `anthropic`, `google`, `groq`, `mistral`, `openrouter`, `ollama` |
+| `apiKey` | string | Yes | The provider API key (will be encrypted) |
+| `defaultModel` | string | No | Default model ID to use for chat |
+| `baseUrl` | string | No | Custom base URL (required for Ollama) |
+| `label` | string | No | Friendly name for the key |
+
+### Listing Available Providers
+
+```bash
+curl http://localhost:4000/api/v1/ai/providers \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "models": ["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+      "capabilities": ["chat", "tools", "vision", "json"],
+      "connected": true
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
+      "capabilities": ["chat", "tools", "vision", "json"],
+      "connected": false
+    }
+  ]
+}
+```
+
+The `connected` field indicates whether the current user has stored credentials for that provider.
+
+### Deleting a Provider Key
+
+```bash
+curl -X DELETE http://localhost:4000/api/v1/ai/credentials/{id} \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+## Security
+
+- API keys are encrypted with AES-256-GCM before storage
+- Keys are decrypted only on the server when making AI calls
+- The `MASTER_ENCRYPTION_KEY` environment variable must be set (32 bytes, base64-encoded)
+- Keys are tested on save (a simple model list or completion request) and `lastTestedOk` is updated

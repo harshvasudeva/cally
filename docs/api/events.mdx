@@ -1,0 +1,155 @@
+---
+title: Events API
+description: CRUD endpoints for internal calendar events
+---
+
+# Events API
+
+Endpoints for creating, reading, updating, and deleting internal calendar events. All endpoints require authentication.
+
+## List Events
+
+### GET /api/v1/events
+
+Retrieve all events for the authenticated user, optionally filtered by date range.
+
+```bash
+curl "http://localhost:4000/api/v1/events?start=2026-05-01T00:00:00Z&end=2026-05-31T23:59:59Z" \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `start` | datetime | No | Filter events starting after this date |
+| `end` | datetime | No | Filter events ending before this date |
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "clevent001",
+    "title": "Team Standup",
+    "description": "Daily team sync",
+    "start": "2026-05-25T09:00:00Z",
+    "end": "2026-05-25T09:30:00Z",
+    "allDay": false,
+    "color": "#6366F1",
+    "category": "work",
+    "location": "Conference Room A",
+    "recurrence": null,
+    "userId": "clxxxxxxxxxxxx"
+  }
+]
+```
+
+---
+
+## Create Event
+
+### POST /api/v1/events
+
+Create a new calendar event.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/events \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Team Standup",
+    "description": "Daily team sync meeting",
+    "start": "2026-05-25T09:00:00Z",
+    "end": "2026-05-25T09:30:00Z",
+    "allDay": false,
+    "color": "#6366F1",
+    "category": "work",
+    "location": "Conference Room A"
+  }'
+```
+
+**Request Body** (`CreateEventRequest`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `title` | string | Yes | 1-200 characters |
+| `description` | string \| null | No | Max 4000 characters |
+| `start` | string (datetime) | Yes | ISO 8601 datetime |
+| `end` | string (datetime) | Yes | ISO 8601 datetime |
+| `allDay` | boolean | No | Defaults to `false` |
+| `color` | string | No | Max 32 characters |
+| `category` | string \| null | No | Max 80 characters |
+| `location` | string \| null | No | Max 300 characters |
+| `recurrence` | string \| null | No | RRULE string, max 1000 characters |
+
+**Response** `201 Created`:
+
+```json
+{
+  "id": "clevent001",
+  "title": "Team Standup",
+  "description": "Daily team sync meeting",
+  "start": "2026-05-25T09:00:00Z",
+  "end": "2026-05-25T09:30:00Z",
+  "allDay": false,
+  "color": "#6366F1",
+  "category": "work",
+  "location": "Conference Room A",
+  "recurrence": null,
+  "userId": "clxxxxxxxxxxxx"
+}
+```
+
+---
+
+## Update Event
+
+### PUT /api/v1/events/:id
+
+Update an existing event. All fields in `UpdateEventRequest` are optional — only included fields are updated.
+
+```bash
+curl -X PUT http://localhost:4000/api/v1/events/clevent001 \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Team Standup (Updated)",
+    "end": "2026-05-25T09:45:00Z"
+  }'
+```
+
+**Request Body** (`UpdateEventRequest`): Same fields as `CreateEventRequest`, but all are optional (`.partial()`).
+
+**Response** `200 OK`: Returns the updated event object.
+
+---
+
+## Delete Event
+
+### DELETE /api/v1/events/:id
+
+Delete a calendar event by ID.
+
+```bash
+curl -X DELETE http://localhost:4000/api/v1/events/clevent001 \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 404 | `NOT_FOUND` | Event not found or does not belong to user |
+| 422 | `VALIDATION_ERROR` | Invalid request body (title too long, invalid date, etc.) |

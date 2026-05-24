@@ -1,0 +1,263 @@
+---
+title: Auth API Reference
+description: Complete API reference for all authentication endpoints
+---
+
+# Auth API Reference
+
+All authentication endpoints are mounted under `/api/auth/*` via the better-auth catch-all handler, with additional session and provider endpoints under `/api/v1/auth/*`.
+
+## Base URL
+
+```
+Production:  https://your-domain.com/api/auth
+Development: http://localhost:4000/api/auth
+```
+
+## Registration
+
+### POST /api/auth/register
+
+Create a new user account with default availability and appointment type.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "SecurePass123!"
+  }'
+```
+
+**Request Body:**
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `name` | string | Yes | 1-120 characters |
+| `email` | string | Yes | Valid email, unique |
+| `password` | string | Yes | Min 12 characters, complexity required |
+
+**Response** `200 OK`:
+
+```json
+{
+  "user": {
+    "id": "clxxxxxxxxxxxx",
+    "email": "john@example.com",
+    "name": "John Doe",
+    "slug": "john-doe",
+    "role": "USER",
+    "twoFactorEnabled": false,
+    "onboardingCompleted": false
+  }
+}
+```
+
+**Side Effects:**
+- Creates `User` record
+- Creates default `Availability` slots (Mon-Fri 9:00-17:00)
+- Creates default `AppointmentType` ("30 Minute Meeting")
+- Creates `Account` record with credential provider
+- Logs the registration in `AuditLog`
+
+---
+
+## Email Sign-In
+
+### POST /api/auth/sign-in/email
+
+Authenticate with email and password.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{
+    "email": "john@example.com",
+    "password": "SecurePass123!"
+  }'
+```
+
+**Request Body:**
+
+| Field | Type | Required |
+|---|---|---|
+| `email` | string | Yes |
+| `password` | string | Yes |
+
+**Response** `200 OK`:
+
+```json
+{
+  "user": {
+    "id": "clxxxxxxxxxxxx",
+    "email": "john@example.com",
+    "name": "John Doe"
+  },
+  "token": "eyJhbGciOi..."
+}
+```
+
+The `token` is used for Bearer token authentication on mobile. On web, the session cookie is set automatically.
+
+---
+
+## Social Sign-In
+
+### GET /api/auth/sign-in/social/{provider}
+
+Redirect to the OAuth provider's authorization page.
+
+```bash
+# Browser redirect — do not call via curl
+# Navigate to: http://localhost:4000/api/auth/sign-in/social/google
+```
+
+**Supported providers:** `google`, `github`, `discord`, `microsoft`, `apple`, `facebook`, `twitter`, `linkedin`
+
+Each provider is only active when its corresponding `CLIENT_ID` and `CLIENT_SECRET` environment variables are configured.
+
+---
+
+## Sign Out
+
+### POST /api/auth/sign-out
+
+Invalidate the current session.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/sign-out \
+  -b cookies.txt
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+## Session
+
+### GET /api/v1/auth/session
+
+Get the current authenticated user, or `null` if not authenticated.
+
+```bash
+curl http://localhost:4000/api/v1/auth/session \
+  -b cookies.txt
+```
+
+**Response** `200 OK` (authenticated):
+
+```json
+{
+  "id": "clxxxxxxxxxxxx",
+  "email": "john@example.com",
+  "name": "John Doe"
+}
+```
+
+**Response** `200 OK` (not authenticated):
+
+```json
+null
+```
+
+---
+
+## Available Providers
+
+### GET /api/v1/auth/providers-list
+
+List OAuth providers that are currently configured and available.
+
+```bash
+curl http://localhost:4000/api/v1/auth/providers-list
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "providers": ["google", "github"]
+}
+```
+
+Only providers with both `CLIENT_ID` and `CLIENT_SECRET` environment variables set will appear.
+
+---
+
+## Password Reset
+
+### POST /api/auth/forget-password
+
+Request a password reset email.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/forget-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com",
+    "redirectTo": "http://localhost:3000/reset-password"
+  }'
+```
+
+### POST /api/auth/reset-password
+
+Reset password using the token from the email.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "reset_token_from_email",
+    "newPassword": "NewSecurePass456!"
+  }'
+```
+
+---
+
+## Email Verification
+
+### POST /api/auth/verify-email
+
+Verify a user's email address using the token sent during registration.
+
+```bash
+curl -X POST http://localhost:4000/api/auth/verify-email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "verification_token"
+  }'
+```
+
+Email verification is only enforced when `requireEmailVerification` is enabled in the `Settings` table.
+
+---
+
+## Error Responses
+
+All auth endpoints return errors in this format:
+
+```json
+{
+  "code": "INVALID_EMAIL_OR_PASSWORD",
+  "message": "Invalid email or password",
+  "details": {}
+}
+```
+
+Common error codes:
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `INVALID_EMAIL_OR_PASSWORD` | 401 | Email not found or password incorrect |
+| `ACCOUNT_LOCKED` | 423 | Account locked due to too many failed attempts |
+| `EMAIL_NOT_VERIFIED` | 403 | Email verification required |
+| `USER_ALREADY_EXISTS` | 409 | Email already registered |
+| `INVALID_TOKEN` | 400 | Invalid or expired token |

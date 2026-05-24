@@ -1,0 +1,93 @@
+---
+title: Environment Variables
+description: Complete reference for all environment variables across backend and client
+---
+
+# Environment Variables
+
+## Backend (Fastify API)
+
+The backend validates environment variables at startup using Zod. If any required variable is missing or invalid, the server will fail to start.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string, e.g. `postgresql://user:pass@localhost:5432/cally` |
+| `BETTER_AUTH_SECRET` | Yes | — | Secret key for better-auth session signing (minimum 16 characters) |
+| `BETTER_AUTH_URL` | Yes | — | Public URL of the backend server, e.g. `http://localhost:4000` |
+| `HOST` | No | `0.0.0.0` | Host to bind the server to |
+| `PORT` | No | `4000` | Port for the API server |
+| `CORS_ORIGINS` | No | Falls back to `CLIENT_URL` | Comma-separated allowed origins, e.g. `http://localhost:3000,http://localhost:8081` |
+| `REDIS_URL` | No | `redis://localhost:6379` | Redis connection URL for BullMQ queues |
+
+### Validated at Startup
+
+The backend uses Zod schema validation on all env vars. Key validations:
+
+- `PORT` must be a positive integer
+- `BETTER_AUTH_SECRET` must be at least 16 characters
+- `CORS_ORIGINS` is split on commas and trimmed; if not set, falls back to `CLIENT_URL`
+- `DATABASE_URL` must be a valid PostgreSQL connection string
+
+## Client (Next.js Frontend)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NEXT_PUBLIC_BACKEND_URL` | Yes | `http://localhost:4000` | URL of the Fastify backend API |
+| `NEXT_PUBLIC_APP_NAME` | No | `Cally` | Application display name |
+| `NEXT_PUBLIC_APP_URL` | No | `http://localhost:3000` | Public URL of the frontend |
+
+### Authentication (Client)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `BETTER_AUTH_SECRET` | Yes | — | Must match the backend's `BETTER_AUTH_SECRET` |
+| `BETTER_AUTH_URL` | Yes | — | Backend URL, e.g. `http://localhost:4000` |
+| `API_PORT` | No | `4000` | Backend API port |
+| `API_CORS_ORIGINS` | No | — | Comma-separated CORS origins for the backend |
+
+### OAuth Providers (Client)
+
+Each provider only activates when both its `CLIENT_ID` and `CLIENT_SECRET` are set:
+
+| Variable | Provider |
+|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google (auth + Calendar) |
+| `DISCORD_BOT_TOKEN` / `DISCORD_APPLICATION_ID` | Discord |
+| `TWITTER_CLIENT_ID` / `TWITTER_CLIENT_SECRET` | X (Twitter) |
+| `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` | Facebook |
+| `APPLE_ID` / `APPLE_SECRET` | Apple |
+
+### Email (SMTP)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SMTP_HOST` | No | — | SMTP server hostname |
+| `SMTP_PORT` | No | `587` | SMTP server port |
+| `SMTP_USER` | No | — | SMTP authentication username |
+| `SMTP_PASS` | No | — | SMTP authentication password |
+| `EMAIL_FROM` | No | — | Default "from" address for outgoing emails |
+
+### Miscellaneous
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CALENDARIFIC_API_KEY` | No | — | API key for holiday data (used by date overrides) |
+
+## Encryption
+
+Cally uses **AES-256-GCM** encryption for sensitive data at rest:
+
+- OAuth tokens (access + refresh) for calendar integrations
+- AI API keys stored per-user
+- TOTP secrets for two-factor authentication
+
+All encryption uses the `MASTER_ENCRYPTION_KEY` environment variable (32 bytes, base64-encoded). If not set, the application will fail operations that require encryption.
+
+```bash
+# Generate a new master encryption key
+openssl rand -base64 32
+```
+
+## Docker / Production
+
+When deploying with Docker or in production, ensure all required variables are set in your environment or `.env` file. See [Deployment](/deployment/self-hosted) for production-specific configurations.

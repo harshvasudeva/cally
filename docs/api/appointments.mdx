@@ -1,0 +1,126 @@
+---
+title: Appointments API
+description: GET and PATCH endpoints for managing appointments
+---
+
+# Appointments API
+
+Endpoints for listing and updating appointments. New appointments are created via the [Booking API](/api/booking).
+
+## List Appointments
+
+### GET /api/v1/appointments
+
+Retrieve all appointments for the authenticated user, optionally filtered by date range or status.
+
+```bash
+curl "http://localhost:4000/api/v1/appointments?status=CONFIRMED&start=2026-05-01T00:00:00Z&end=2026-05-31T23:59:59Z" \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `start` | datetime | No | Filter appointments starting after this date |
+| `end` | datetime | No | Filter appointments ending before this date |
+| `status` | string | No | Filter by status: `PENDING`, `CONFIRMED`, `CANCELLED`, `COMPLETED` |
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "clappt001",
+    "title": "30 Minute Meeting",
+    "start": "2026-05-25T10:00:00Z",
+    "end": "2026-05-25T10:30:00Z",
+    "status": "CONFIRMED",
+    "guestEmail": "guest@example.com",
+    "guestName": "Jane Smith",
+    "guestPhone": "+1234567890",
+    "guestNotes": "Looking forward to discussing the project",
+    "meetingLink": "https://meet.google.com/abc-defg-hij",
+    "negotiationNote": null,
+    "originalTime": null,
+    "appointmentTypeId": "cltype001",
+    "userId": "clxxxxxxxxxxxx"
+  }
+]
+```
+
+---
+
+## Update Appointment
+
+### PATCH /api/v1/appointments/:id
+
+Update an existing appointment. Only included fields are updated.
+
+```bash
+curl -X PATCH http://localhost:4000/api/v1/appointments/clappt001 \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "CANCELLED",
+    "negotiationNote": "Need to reschedule due to conflict"
+  }'
+```
+
+**Request Body** (`UpdateAppointmentRequest`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `status` | string | No | One of: `PENDING`, `CONFIRMED`, `CANCELLED`, `COMPLETED` |
+| `negotiationNote` | string \| null | No | Max 2000 characters, used for rescheduling negotiations |
+
+**Response** `200 OK`: Returns the updated appointment object.
+
+---
+
+## Appointment Statuses
+
+| Status | Description |
+|---|---|
+| `PENDING` | Newly created, awaiting confirmation |
+| `CONFIRMED` | Confirmed by the host |
+| `CANCELLED` | Cancelled by either party |
+| `COMPLETED` | Meeting has taken place |
+
+---
+
+## Appointment Types
+
+Appointment types define the template for bookings. They are managed via separate endpoints (not yet in the standalone API — currently available in the Next.js frontend).
+
+### Appointment Type Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `id` | string | Unique identifier |
+| `name` | string | Display name (e.g. "30 Minute Meeting") |
+| `slug` | string | URL-safe identifier for the booking page |
+| `duration` | number | Duration in minutes |
+| `bufferBefore` | number | Buffer time before the meeting (minutes) |
+| `bufferAfter` | number | Buffer time after the meeting (minutes) |
+| `color` | string | Display color |
+| `description` | string | Type description shown on booking page |
+| `location` | string | Default meeting location |
+| `formFields` | object | Custom booking form field definitions |
+| `isActive` | boolean | Whether the type is publicly bookable |
+| `minNotice` | number | Minimum advance notice required (minutes) |
+| `maxPerDay` | number | Maximum bookings of this type per day |
+| `priceCents` | number | Price in cents (null if free) |
+| `currency` | string | ISO currency code |
+| `meetingProvider` | string | `"zoom"`, `"meet"`, `"teams"`, `"in_person"`, `"phone"`, `"custom"` |
+| `teamId` | string | Team ID for round-robin/collective scheduling |
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 404 | `NOT_FOUND` | Appointment not found or does not belong to user |
+| 422 | `VALIDATION_ERROR` | Invalid status value or negotiation note too long |

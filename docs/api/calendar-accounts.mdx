@@ -1,0 +1,108 @@
+---
+title: Calendar Accounts API
+description: List and disconnect external calendar accounts
+---
+
+# Calendar Accounts API
+
+Endpoints for listing and disconnecting external calendar accounts (Google, Outlook, CalDAV). To connect a new calendar account, see [Google Calendar Integration](/integrations/google-calendar).
+
+## List Calendar Accounts
+
+### GET /api/v1/calendar-accounts
+
+Retrieve all connected calendar accounts for the authenticated user.
+
+```bash
+curl http://localhost:4000/api/v1/calendar-accounts \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "clcalacct001",
+    "provider": "google",
+    "email": "john@gmail.com",
+    "displayName": "John Doe",
+    "syncStatus": "idle",
+    "lastSyncAt": "2026-05-24T15:30:00Z"
+  }
+]
+```
+
+Each account includes:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Calendar account ID |
+| `provider` | string | Calendar provider: `google`, `microsoft`, `apple_caldav`, or `generic_caldav` |
+| `email` | string | Email address associated with the account |
+| `displayName` | string \| null | Display name from the provider |
+| `syncStatus` | string | Current sync status: `idle`, `syncing`, `error`, or `disconnected` |
+| `lastSyncAt` | string \| null | ISO 8601 datetime of the last successful sync |
+
+---
+
+## Disconnect Calendar Account
+
+### DELETE /api/v1/calendar-accounts/:id
+
+Disconnect and remove a calendar account. This also deletes all associated external calendars and events.
+
+```bash
+curl -X DELETE http://localhost:4000/api/v1/calendar-accounts/clcalacct001 \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "success": true
+}
+```
+
+**Side Effects:**
+- Revokes the OAuth token with the provider (where supported)
+- Deletes all `ExternalCalendar` records for this account
+- Deletes all `ExternalEvent` records for those calendars
+- Deletes all `ExternalEventMapping` records
+- Sets `syncStatus` to `disconnected` before deletion
+- Cancels any pending BullMQ sync jobs for this account
+
+---
+
+## Calendar Provider Adapter Interface
+
+Each calendar provider implements the `CalendarProviderAdapter` interface:
+
+```typescript
+interface CalendarProviderAdapter {
+  listCalendars(accessToken: string): Promise<ExternalCalendar[]>;
+  fullSync(accountId: string, calendarId: string): Promise<SyncResult>;
+  incrementalSync(accountId: string, calendarId: string, syncToken: string): Promise<SyncResult>;
+}
+```
+
+### Supported Providers
+
+| Provider | Status | Sync Method |
+|---|---|---|
+| **Google Calendar** | Implemented (stub) | Webhook push + incremental sync |
+| **Microsoft Outlook** | Implemented (stub) | Delta tokens + change notifications |
+| **CalDAV** (iCloud, etc.) | Implemented (stub) | Polling every 5 minutes |
+
+See [Calendar Sync](/api/calendar-sync) for details on the sync engine.
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 404 | `NOT_FOUND` | Calendar account not found or does not belong to user |
+| 409 | `SYNC_IN_PROGRESS` | Cannot disconnect while a sync is in progress |

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Cally",
+  "colors": {
+    "primary": "#6366F1",
+    "light": "#818CF8",
+    "dark": "#4F46E5"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "index",
+              "getting-started/installation",
+              "getting-started/environment-variables",
+              "getting-started/project-structure"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/database"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "auth/overview",
+              "auth/oauth",
+              "auth/two-factor",
+              "auth/api-reference"
+            ]
+          },
+          {
+            "group": "AI",
+            "pages": [
+              "ai/overview",
+              "ai/providers",
+              "ai/chat-api"
+            ]
+          },
+          {
+            "group": "Frontend",
+            "pages": [
+              "frontend/overview"
+            ]
+          },
+          {
+            "group": "Workers",
+            "pages": [
+              "background-workers/overview"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Reference",
+            "pages": [
+              "api/overview",
+              "api/users",
+              "api/events",
+              "api/availability",
+              "api/appointments",
+              "api/booking",
+              "api/calendar-accounts",
+              "api/calendar-sync",
+              "api/contracts"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/google-calendar",
+              "integrations/outlook",
+              "integrations/caldav",
+              "integrations/stripe"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Deployment",
+        "groups": [
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/self-hosted",
+              "deployment/docker",
+              "deployment/cloud"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo-light.svg",
+    "dark": "/logo-dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/harshvasudeva/cally"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "/getting-started/installation"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/harshvasudeva/cally"
+    }
+  }
+}

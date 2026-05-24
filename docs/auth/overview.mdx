@@ -1,0 +1,109 @@
+---
+title: Authentication Overview
+description: How authentication works in Cally using better-auth with cookies, bearer tokens, and multi-tenant sessions
+---
+
+# Authentication Overview
+
+Cally uses [better-auth](https://www.better-auth.com/) v1.x as its authentication framework, replacing NextAuth v4. better-auth provides a comprehensive set of features out of the box:
+
+## Features
+
+| Feature | Status |
+|---|---|
+| Email + Password registration & login | Enabled |
+| OAuth social login (8 providers) | Configurable per-provider |
+| Two-Factor Authentication (TOTP) | Scaffolded |
+| WebAuthn / Passkeys | Scaffolded |
+| Organization / Multi-tenancy | Scaffolded |
+| Account lockout | Custom implementation |
+| Audit logging on auth events | Enabled |
+| CSRF protection | Built-in (better-auth) |
+| Encrypted tokens at rest | AES-256-GCM |
+
+## Session Strategy
+
+Cally supports two session strategies depending on the client:
+
+### Web (Next.js)
+
+- **httpOnly cookie** named `better-auth.session_token`
+- Flags: `Secure`, `SameSite=Lax`
+- 7-day rolling expiration
+- Automatically included in all API requests via `credentials: "include"`
+
+### Mobile (Expo / React Native)
+
+- **Bearer token** sent as `Authorization: Bearer <token>`
+- Stored in `expo-secure-store` on device
+- Same 7-day rolling expiration
+- Token is obtained via the sign-in API and managed client-side
+
+## Registration Flow
+
+When a user registers, Cally creates:
+
+1. A `User` record
+2. Default `Availability` slots (Mon-Fri, 9:00-17:00)
+3. A default `AppointmentType` ("30 Minute Meeting")
+4. An `Account` record with the credential provider
+
+All within a single database transaction.
+
+## Authentication in API Requests
+
+### Cookie-based (Web)
+
+```bash
+# Sign in and store cookies
+curl -X POST http://localhost:4000/api/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"email":"you@example.com","password":"YourPass123"}'
+
+# Subsequent requests include the session cookie automatically
+curl http://localhost:4000/api/v1/users/me -b cookies.txt
+```
+
+### Bearer token (Mobile)
+
+```bash
+# Sign in and extract the token from the response
+TOKEN=$(curl -s -X POST http://localhost:4000/api/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"YourPass123"}' | jq -r '.token')
+
+# Use the token in subsequent requests
+curl http://localhost:4000/api/v1/users/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Security Hardening
+
+### Account Lockout
+
+After `maxLoginAttempts` (configurable in Settings, default 5) failed login attempts, the account is locked for `lockoutDuration` minutes. This is implemented via a custom `signIn` hook in better-auth.
+
+### Password Policy
+
+- Minimum 12 characters
+- Complexity requirements (uppercase, lowercase, number, special character)
+- Breached-password check using k-anonymity API
+
+### Encryption
+
+All sensitive data is encrypted at rest using AES-256-GCM:
+
+- OAuth access and refresh tokens (stored in `CalendarAccount`)
+- AI API keys (stored in `UserAICredential`)
+- TOTP secrets (stored in `TwoFactor`)
+
+Encryption uses the `MASTER_ENCRYPTION_KEY` environment variable (32 bytes, base64-encoded).
+
+### Rate Limiting
+
+All `/api/auth/*` and `/api/booking/*` endpoints are rate-limited using a token bucket algorithm.
+
+### Audit Logging
+
+Every authentication event (sign-in, sign-out, registration, password change, 2FA enable/disable) is logged to the `AuditLog` table with IP address and user agent.

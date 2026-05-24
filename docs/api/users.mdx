@@ -1,0 +1,105 @@
+---
+title: Users API
+description: GET and PATCH endpoints for the current user profile
+---
+
+# Users API
+
+Endpoints for managing the currently authenticated user's profile.
+
+## Get Current User
+
+### GET /api/v1/users/me
+
+Retrieve the full profile of the currently authenticated user.
+
+```bash
+curl http://localhost:4000/api/v1/users/me \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": "clxxxxxxxxxxxx",
+  "email": "john@example.com",
+  "name": "John Doe",
+  "slug": "john-doe",
+  "role": "USER",
+  "timezone": "America/New_York",
+  "country": "US",
+  "avatarUrl": null,
+  "theme": "system",
+  "onboardingCompleted": true,
+  "twoFactorEnabled": false,
+  "notificationPrefs": {
+    "email": true,
+    "reminder24h": true,
+    "reminder1h": true
+  }
+}
+```
+
+### GET /api/v1/user/profile
+
+Alias for `/api/v1/users/me`. Returns the same data.
+
+---
+
+## Update Current User
+
+### PATCH /api/v1/users/me
+
+Update the currently authenticated user's profile. Only included fields are updated.
+
+```bash
+curl -X PATCH http://localhost:4000/api/v1/users/me \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Updated",
+    "timezone": "Europe/London",
+    "theme": "dark"
+  }'
+```
+
+**Request Body** (`UpdateUserProfileRequest`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `name` | string | No | 1-120 characters |
+| `slug` | string | No | 3-80 characters, `^[a-z0-9-]+$` |
+| `timezone` | string | No | 1-80 characters (IANA timezone) |
+| `theme` | string | No | `"light"`, `"dark"`, or `"system"` |
+| `country` | string \| null | No | Max 80 characters |
+| `notificationPrefs` | object | No | Key-value notification preferences |
+
+**Response** `200 OK`:
+
+```json
+{
+  "id": "clxxxxxxxxxxxx",
+  "email": "john@example.com",
+  "name": "John Updated",
+  "slug": "john-doe",
+  "timezone": "Europe/London",
+  "theme": "dark",
+  "country": "US",
+  "onboardingCompleted": true
+}
+```
+
+### PUT /api/v1/user/profile
+
+Full replacement of the user profile. Alias for the PATCH endpoint with the same schema.
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 422 | `VALIDATION_ERROR` | Invalid field values (e.g., slug format) |
+| 409 | `CONFLICT` | Slug already taken by another user |

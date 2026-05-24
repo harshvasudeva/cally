@@ -1,0 +1,80 @@
+---
+title: CalDAV / Apple iCloud
+description: Connect CalDAV-compatible calendars including Apple iCloud and generic servers
+---
+
+# CalDAV / Apple iCloud
+
+Cally supports CalDAV-compatible calendar servers including Apple iCloud and generic CalDAV servers (like Radicale, Baikal, Nextcloud).
+
+## Status
+
+CalDAV integration is **scaffolded** — the provider adapter, OAuth flow, and data mapper are implemented but use polling instead of push notifications.
+
+## How CalDAV Differs from Google/Outlook
+
+| Feature | Google / Outlook | CalDAV |
+|---|---|---|
+| Sync mechanism | Webhook push notifications | Polling every 5 minutes |
+| Auth | OAuth 2.0 | HTTP Basic Auth or Apple app-specific password |
+| Events | Sync tokens | ETags + `ctag` comparison |
+| Calendar discovery | API list | WebDAV PROPFIND |
+| Real-time updates | Yes (webhooks) | No (polling only) |
+
+## Setup
+
+### Apple iCloud
+
+1. Enable two-factor authentication on your Apple ID
+2. Generate an app-specific password at [appleid.apple.com](https://appleid.apple.com/)
+3. In Cally Settings → Integrations, select "Apple iCloud"
+4. Enter your Apple ID email and app-specific password
+
+### Generic CalDAV
+
+1. In Cally Settings → Integrations, select "Generic CalDAV"
+2. Enter your CalDAV server URL, username, and password
+3. Common server URLs:
+   - **Nextcloud**: `https://cloud.example.com/remote.php/dav/calendars/`
+   - **Radicale**: `https://cal.example.com/`
+   - **Baikal**: `https://baikal.example.com/dav/calendars/`
+
+## Provider Architecture
+
+```typescript
+// src/providers/caldav/adapter.ts
+export class CalDAVAdapter implements CalendarProviderAdapter {
+  async listCalendars(accessToken: string): Promise<ExternalCalendar[]>;
+  async fullSync(accountId: string, calendarId: string): Promise<SyncResult>;
+  async incrementalSync(accountId: string, calendarId: string, syncToken: string): Promise<SyncResult>;
+}
+```
+
+The CalDAV adapter uses the `tsdav` library for DAV protocol communication.
+
+## Sync Behavior
+
+Since CalDAV doesn't support push notifications:
+
+1. Cally polls each connected CalDAV calendar every **5 minutes**
+2. A BullMQ scheduled job enqueues `incremental-sync` jobs for each CalDAV account
+3. The sync uses `ctag` (calendar tag) comparison to detect changes
+4. If the `ctag` has changed, the adapter fetches only modified events using ETags
+
+## Data Mapping
+
+| CalDAV (iCalendar) | Cally ExternalEvent |
+|---|---|
+| `UID` | `iCalUid` |
+| `SUMMARY` | `summary` |
+| `DTSTART` | `start` |
+| `DTEND` | `end` |
+| `X-ALLDAY` or duration logic | `allDay` |
+| `ETag` | Used for change detection |
+
+## Current Limitations
+
+- No real-time updates (polling only)
+- Outbound sync (pushing events from Cally to CalDAV) is planned for Phase 1
+- Recurring events are supported but only as individual occurrences (no RRULE expansion yet)
+- Calendar write support (`writable` flag) depends on server capabilities

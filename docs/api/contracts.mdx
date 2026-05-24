@@ -1,0 +1,206 @@
+---
+title: Contracts Package
+description: Shared Zod schemas and TypeScript types for API request/response validation
+---
+
+# Contracts Package
+
+The `@cally/contracts` package is the **single source of truth** for API request/response shapes shared between the client and backend.
+
+## Installation
+
+The package is part of the monorepo workspace:
+
+```json
+// client/packages/contracts/package.json
+{
+  "name": "@cally/contracts",
+  "version": "0.1.0",
+  "dependencies": {
+    "zod": "^4.4.2"
+  }
+}
+```
+
+## Usage
+
+```typescript
+// Import from barrel
+import { CreateEventRequest, UpdateUserProfileRequest } from "@cally/contracts";
+
+// Or import from specific modules
+import { AvailabilitySlot } from "@cally/contracts/availability";
+import { CalendarProvider } from "@cally/contracts/calendar-accounts";
+```
+
+## Schemas Reference
+
+### Error Response
+
+```typescript
+// @cally/contracts/errors
+const ApiErrorResponse = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: z.record(z.unknown()).default({}),
+});
+```
+
+### Session User
+
+```typescript
+// @cally/contracts/auth
+const SessionUser = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  name: z.string().nullable().optional(),
+  image: z.string().nullable().optional(),
+});
+```
+
+### User Profile Update
+
+```typescript
+// @cally/contracts/users
+const UpdateUserProfileRequest = z.object({
+  name: z.string().min(1).max(120).optional(),
+  slug: z.string().min(3).max(80).regex(/^[a-z0-9-]+$/).optional(),
+  timezone: z.string().min(1).max(80).optional(),
+  theme: z.enum(["light", "dark", "system"]).optional(),
+  country: z.string().max(80).nullable().optional(),
+  notificationPrefs: z.record(z.unknown()).optional(),
+});
+```
+
+### Availability
+
+```typescript
+// @cally/contracts/availability
+const AvailabilitySlot = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  isActive: z.boolean().default(true),
+});
+
+const ReplaceAvailabilityRequest = z.object({
+  slots: z.array(AvailabilitySlot).max(100),
+});
+```
+
+### Events
+
+```typescript
+// @cally/contracts/events
+const CreateEventRequest = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(4000).nullable().optional(),
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+  allDay: z.boolean().default(false),
+  color: z.string().max(32).optional(),
+  category: z.string().max(80).nullable().optional(),
+  location: z.string().max(300).nullable().optional(),
+  recurrence: z.string().max(1000).nullable().optional(),
+});
+
+const UpdateEventRequest = CreateEventRequest.partial();
+```
+
+### Booking
+
+```typescript
+// @cally/contracts/booking
+const CreateBookingRequest = z.object({
+  appointmentTypeId: z.string(),
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+  guestName: z.string().min(1).max(120),
+  guestEmail: z.string().email(),
+  guestPhone: z.string().max(50).optional(),
+  guestNotes: z.string().max(2000).optional(),
+});
+```
+
+### Appointments
+
+```typescript
+// @cally/contracts/appointments
+const UpdateAppointmentRequest = z.object({
+  status: z.enum(["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED"]).optional(),
+  negotiationNote: z.string().max(2000).nullable().optional(),
+});
+```
+
+### Calendar Accounts
+
+```typescript
+// @cally/contracts/calendar-accounts
+const CalendarProvider = z.enum([
+  "google",
+  "microsoft",
+  "apple_caldav",
+  "generic_caldav",
+]);
+
+const CalendarAccountDTO = z.object({
+  id: z.string(),
+  provider: CalendarProvider,
+  email: z.string().email(),
+  displayName: z.string().nullable().optional(),
+  syncStatus: z.string(),
+  lastSyncAt: z.string().datetime().nullable().optional(),
+});
+```
+
+## Type Inference
+
+Use `z.infer` to get TypeScript types from schemas:
+
+```typescript
+import { CreateEventRequest, UpdateUserProfileRequest } from "@cally/contracts";
+
+type CreateEventInput = z.infer<typeof CreateEventRequest>;
+type UpdateProfileInput = z.infer<typeof UpdateUserProfileRequest>;
+```
+
+## Server-Side Validation
+
+The backend uses these schemas to validate incoming requests:
+
+```typescript
+// src/infrastructure/validation.ts
+import { parseDTO } from "./validation";
+
+// In a route handler:
+const body = parseDTO(CreateEventRequest, request.body);
+// If validation fails, returns 422 with field-level error details
+```
+
+## Package Structure
+
+```
+packages/contracts/
+├── package.json         # @cally/contracts, workspace package
+└── src/
+    ├── index.ts          # Barrel re-export
+    ├── auth.ts           # SessionUser schema
+    ├── users.ts          # UpdateUserProfileRequest
+    ├── events.ts         # Create/Update event schemas
+    ├── availability.ts   # Availability slot schemas
+    ├── booking.ts        # CreateBookingRequest
+    ├── appointments.ts   # UpdateAppointmentRequest
+    ├── calendar-accounts.ts  # Provider enum + DTO
+    └── errors.ts         # ApiErrorResponse schema
+```
+
+The package uses **path-based exports** directly to TypeScript source files (no build step):
+
+```json
+{
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  }
+}
+```

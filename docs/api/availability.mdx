@@ -1,0 +1,144 @@
+---
+title: Availability API
+description: GET and PUT endpoints for managing weekly availability slots
+---
+
+# Availability API
+
+Endpoints for managing the authenticated user's weekly availability. Availability defines which time slots are open for booking on each day of the week.
+
+## Get Availability
+
+### GET /api/v1/availability
+
+Retrieve all availability slots for the authenticated user.
+
+```bash
+curl http://localhost:4000/api/v1/availability \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+**Response** `200 OK`:
+
+```json
+[
+  {
+    "id": "clavail001",
+    "dayOfWeek": 1,
+    "startTime": "09:00",
+    "endTime": "17:00",
+    "isActive": true,
+    "userId": "clxxxxxxxxxxxx"
+  },
+  {
+    "id": "clavail002",
+    "dayOfWeek": 2,
+    "startTime": "09:00",
+    "endTime": "17:00",
+    "isActive": true,
+    "userId": "clxxxxxxxxxxxx"
+  },
+  {
+    "id": "clavail003",
+    "dayOfWeek": 3,
+    "startTime": "09:00",
+    "endTime": "17:00",
+    "isActive": true,
+    "userId": "clxxxxxxxxxxxx"
+  },
+  {
+    "id": "clavail004",
+    "dayOfWeek": 4,
+    "startTime": "09:00",
+    "endTime": "17:00",
+    "isActive": true,
+    "userId": "clxxxxxxxxxxxx"
+  },
+  {
+    "id": "clavail005",
+    "dayOfWeek": 5,
+    "startTime": "09:00",
+    "endTime": "17:00",
+    "isActive": true,
+    "userId": "clxxxxxxxxxxxx"
+  }
+]
+```
+
+The `dayOfWeek` uses JavaScript convention: **0 = Sunday, 1 = Monday, ..., 6 = Saturday**.
+
+---
+
+## Replace Availability
+
+### PUT /api/v1/availability
+
+Replace all availability slots for the authenticated user. This is a **full replacement** — the existing slots are deleted and the provided slots are created.
+
+```bash
+curl -X PUT http://localhost:4000/api/v1/availability \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slots": [
+      { "dayOfWeek": 1, "startTime": "09:00", "endTime": "12:00", "isActive": true },
+      { "dayOfWeek": 1, "startTime": "13:00", "endTime": "17:00", "isActive": true },
+      { "dayOfWeek": 2, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+      { "dayOfWeek": 3, "startTime": "10:00", "endTime": "16:00", "isActive": true },
+      { "dayOfWeek": 4, "startTime": "09:00", "endTime": "17:00", "isActive": true },
+      { "dayOfWeek": 5, "startTime": "09:00", "endTime": "15:00", "isActive": true }
+    ]
+  }'
+```
+
+**Request Body** (`ReplaceAvailabilityRequest`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `slots` | array | Yes | Max 100 items |
+
+Each slot (`AvailabilitySlot`):
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `dayOfWeek` | number | Yes | 0-6 (Sunday = 0) |
+| `startTime` | string | Yes | `HH:mm` format, matches `^\d{2}:\d{2}$` |
+| `endTime` | string | Yes | `HH:mm` format, matches `^\d{2}:\d{2}$` |
+| `isActive` | boolean | No | Defaults to `true` |
+
+**Response** `200 OK`: Returns the new array of availability slots.
+
+---
+
+## How Availability Works
+
+Availability slots are combined with date overrides and external calendar events to compute the final set of bookable times:
+
+```
+Final Availability = Weekly Slots
+                    - Date Overrides (blocked days)
+                    + Date Overrides (opened days)
+                    - External Calendar Conflicts
+                    - Existing Appointments
+                    - Buffer Times (before/after appointments)
+```
+
+1. **Weekly slots** define the default available hours per day
+2. **Date overrides** (`DateOverride`) can block entire days or override specific hours
+3. **External calendar events** (`ExternalEvent`) from connected calendars are subtracted as conflicts
+4. **Existing appointments** block their time range plus buffer times
+5. **Minimum notice** settings on appointment types prevent last-second bookings
+
+See also:
+- [Date Overrides](/api/appointments) for blocking specific dates
+- [Calendar Accounts](/api/calendar-accounts) for connecting external calendars
+- [Booking](/api/booking) for the public booking flow
+
+---
+
+## Error Responses
+
+| Status | Code | Description |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
+| 422 | `VALIDATION_ERROR` | Invalid slot data (day out of range, invalid time format) |

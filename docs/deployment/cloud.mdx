@@ -1,0 +1,210 @@
+---
+title: Cloud Deployment
+description: Deploy Cally on Vercel, Neon, and Upstash Redis
+---
+
+# Cloud Deployment
+
+Deploy Cally using managed cloud services for a production-ready setup with minimal operational overhead.
+
+## Architecture
+
+| Component | Service | Notes |
+|---|---|---|
+| **Frontend** | Vercel | Next.js hosting with automatic deploys |
+| **Database** | Neon (or Supabase) | Serverless PostgreSQL with connection pooling |
+| **Redis** | Upstash Redis | Serverless Redis for BullMQ queues |
+| **API Server** | Vercel Serverless or Fly.io | Fastify backend |
+| **Workers** | Fly.io or Railway | Long-running BullMQ worker process |
+
+## Option 1: Vercel + Neon + Upstash (Recommended)
+
+### Step 1: Set Up Neon PostgreSQL
+
+1. Create a [Neon](https://neon.tech/) account and project
+2. Copy the connection string:
+
+```
+postgresql://cally:password@ep-cool-name-123456.us-east-2.aws.neon.tech/cally?sslmode=require
+```
+
+3. Run migrations locally:
+
+```bash
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
+DATABASE_URL="postgresql://..." npx prisma generate
+```
+
+### Step 2: Set Up Upstash Redis
+
+1. Create an [Upstash](https://upstash.com/) Redis instance
+2. Copy the Redis URL:
+
+```
+rediss://default:xxxxxxxxx@us1-xxxxx.upstash.io:6379
+```
+
+### Step 3: Deploy the Fastify API
+
+#### Option A: Deploy on Vercel as Serverless Functions
+
+This requires adapting the Fastify server to Vercel's serverless function format. Create `api/[[...path]].ts` in the Next.js project:
+
+```typescript
+// This approach has limitations with WebSocket and long-running requests
+// Recommended only for low-traffic deployments
+```
+
+#### Option B: Deploy on Fly.io (Recommended for API)
+
+1. Create a `fly.toml` in the backend directory:
+
+```toml
+app = "cally-api"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile.api"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "4000"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_type = "shared"
+  cpus = 1
+```
+
+2. Set secrets:
+
+```bash
+fly secrets set \
+  DATABASE_URL="postgresql://..." \
+  BETTER_AUTH_SECRET="..." \
+  BETTER_AUTH_URL="https://cally-api.fly.dev" \
+  CLIENT_URL="https://cally.vercel.app" \
+  CORS_ORIGINS="https://cally.vercel.app" \
+  REDIS_URL="rediss://..." \
+  MASTER_ENCRYPTION_KEY="..."
+```
+
+3. Deploy:
+
+```bash
+cd backend
+fly deploy
+```
+
+### Step 4: Deploy the Worker on Fly.io
+
+Create a separate Fly.io app for the background worker:
+
+```toml
+app = "cally-worker"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile.api"
+
+[env]
+  NODE_ENV = "production"
+
+[processes]
+  worker = "node dist/workers/index.js"
+
+[[vm]]
+  memory = "256mb"
+  cpu_type = "shared"
+  cpus = 1
+```
+
+```bash
+fly secrets set \
+  DATABASE_URL="postgresql://..." \
+  REDIS_URL="rediss://..." \
+  MASTER_ENCRYPTION_KEY="..."
+
+fly deploy
+```
+
+### Step 5: Deploy the Next.js Frontend on Vercel
+
+1. Push the `client/` directory to a Git repository
+2. Connect the repository to [Vercel](https://vercel.com/)
+3. Set the root directory to `client/client`
+4. Configure environment variables:
+
+```
+NEXT_PUBLIC_BACKEND_URL=https://cally-api.fly.dev
+NEXT_PUBLIC_APP_NAME=Cally
+NEXT_PUBLIC_APP_URL=https://cally.vercel.app
+```
+
+5. Vercel will automatically build and deploy on every push to `main`
+
+### Step 6: Configure CORS
+
+On the Fly.io API server, ensure `CORS_ORIGINS` includes the Vercel URL:
+
+```
+CORS_ORIGINS=https://cally.vercel.app,https://cally.vercel.app
+```
+
+## Option 2: Supabase + Railway
+
+### Supabase (PostgreSQL)
+
+1. Create a [Supabase](https://supabase.com/) project
+2. Copy the connection string from Project Settings → Database
+3. Use the connection pooler URL for serverless environments
+
+### Railway (API + Worker)
+
+1. Create a [Railway](https://railway.app/) project
+2. Deploy the backend from a GitHub repo
+3. Add a Redis service from Railway's marketplace
+4. Configure environment variables in Railway's dashboard
+5. Deploy a second service for the worker using the same Dockerfile with a different start command
+
+## Environment Variables Summary
+
+| Variable | Where to Set | Notes |
+|---|---|---|
+| `DATABASE_URL` | API, Worker | Neon/Supabase connection string with `?sslmode=require` |
+| `BETTER_AUTH_SECRET` | API | Generate with `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | API | Public URL of the API server |
+| `CLIENT_URL` | API | Public URL of the frontend |
+| `CORS_ORIGINS` | API | Comma-separated list of frontend URLs |
+| `REDIS_URL` | API, Worker | Upstash Redis URL (use `rediss://` for TLS) |
+| `MASTER_ENCRYPTION_KEY` | API, Worker | Generate with `openssl rand -base64 32` |
+| `NEXT_PUBLIC_BACKEND_URL` | Frontend | Public URL of the API server |
+
+## Health Checks
+
+All deployment targets should configure health checks:
+
+```bash
+# API health
+curl https://your-api-domain/health
+# Expected: {"status":"ok"}
+
+# Worker health (via Redis)
+redis-cli ping
+# Expected: PONG
+```
+
+## Monitoring
+
+- **Vercel**: Built-in monitoring and logs in the Vercel dashboard
+- **Fly.io**: `fly logs` and `fly metrics` commands
+- **Neon**: Built-in monitoring in the Neon dashboard
+- **Upstash**: Built-in metrics in the Upstash dashboard

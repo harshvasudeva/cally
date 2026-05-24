@@ -1,0 +1,72 @@
+---
+title: Cally Documentation
+description: All-in-one self-hosted scheduling platform — Calendly meets Google Calendar meets AI
+---
+
+# Cally Documentation
+
+Cally is an all-in-one, self-hostable scheduling platform that combines calendar management, appointment booking, AI assistance, and payments into a single application.
+
+## What is Cally?
+
+Cally replaces the need for multiple separate tools:
+
+- **Calendly** — first-class booking pages with availability management
+- **Google Calendar** — full calendar with two-way sync for Google, Outlook, and CalDAV
+- **AI Assistant** — bring-your-own-key AI chat with conversational booking
+- **Stripe** — native payments for paid appointments
+
+Everything is self-hostable, multi-tenant, and built on **better-auth** + **PostgreSQL** + **Redis**.
+
+## Key Features
+
+| Feature | Description |
+|---|---|
+| [Authentication](/auth/overview) | better-auth with email+password, 8 OAuth providers, 2FA, and passkeys |
+| [Calendar Sync](/integrations/google-calendar) | Two-way sync with Google Calendar, Outlook, and CalDAV providers |
+| [AI BYO-Key](/ai/overview) | Each user brings their own OpenAI, Anthropic, Gemini, Groq, Mistral, or Ollama key |
+| [Booking Pages](/api/booking) | Public booking pages with conflict detection and availability resolution |
+| [REST API](/api/overview) | Full v1 REST API with Zod-validated contracts shared between client and server |
+| [Self-Hostable](/deployment/self-hosted) | Deploy with Caddy + systemd, Docker Compose, or cloud (Vercel + Neon + Upstash) |
+
+## Architecture at a Glance
+
+```
++------------------+    +------------------+    +--------------------+
+|  Next.js Web     |    |  Expo Mobile     |    |  Public Booking    |
+|  (App Router)    |    |  (React Native)   |    |     Pages          |
++--------+---------+    +--------+---------+    +---------+----------+
+         |                       |                        |
+         +-----------------------+------------------------+
+                                 |
+                   +-------------v--------------+
+                   |  Fastify API Server       |
+                   |  /api/v1/*                |
+                   |  /api/auth/* (better-auth) |
+                   +-------+-----------+-------+
+                           |           |
+               +-----------v-----+ +---v----------+
+               |  PostgreSQL 16   | |  Redis 7     |
+               |  (Prisma 7)      | |  + BullMQ    |
+               +------------------+ +---+----------+
+                                         |
+                           +-------------v----------+
+                           |            |           |
+                   +-------+----+ +----+------+ +-v---------+
+                   | Google Cal | |  Outlook  | | Reminders |
+                   | sync worker| | sync work | | worker   |
+                   +------------+ +-----------+ +-----------+
+```
+
+## Quick Links
+
+| I want to... | Go to |
+|---|---|
+| Install and run Cally locally | [Installation Guide](/getting-started/installation) |
+| Configure environment variables | [Environment Variables](/getting-started/environment-variables) |
+| Understand the project layout | [Project Structure](/getting-started/project-structure) |
+| View the database schema | [Database Models](/architecture/database) |
+| Use the REST API | [API Overview](/api/overview) |
+| Set up Google Calendar sync | [Google Calendar Integration](/integrations/google-calendar) |
+| Configure AI providers | [AI Providers](/ai/providers) |
+| Deploy to production | [Deployment Guide](/deployment/self-hosted) |

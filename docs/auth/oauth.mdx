@@ -1,0 +1,133 @@
+---
+title: OAuth Providers
+description: Configure social login providers (Google, GitHub, Discord, Microsoft, Apple, Facebook, X, LinkedIn)
+---
+
+# OAuth Providers
+
+Cally supports 8 social login providers via better-auth. Each provider is **conditionally activated** — it only appears in the login UI when both its `CLIENT_ID` and `CLIENT_SECRET` environment variables are set.
+
+## Supported Providers
+
+| Provider | Env Vars | Also Enables |
+|---|---|---|
+| **Google** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Calendar sync |
+| **GitHub** | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — |
+| **Discord** | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | — |
+| **Microsoft** | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Outlook calendar sync |
+| **Apple** | `APPLE_ID`, `APPLE_SECRET` | — |
+| **Facebook** | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | — |
+| **X (Twitter)** | `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET` | — |
+| **LinkedIn** | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | — |
+
+## Configuration
+
+### Step 1: Create OAuth Credentials
+
+For each provider, create an OAuth 2.0 application in the provider's developer console:
+
+- **Google**: [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+- **GitHub**: [GitHub Developer Settings](https://github.com/settings/developers)
+- **Discord**: [Discord Developer Portal](https://discord.com/developers/applications)
+- **Microsoft**: [Azure Portal](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps)
+- **Apple**: [Apple Developer](https://developer.apple.com/sign-in-with-apple/)
+
+### Step 2: Set Redirect URIs
+
+Configure the following redirect URIs in each OAuth application:
+
+| Purpose | URI |
+|---|---|
+| Auth callback | `{APP_URL}/api/auth/callback/{provider}` |
+| Google Calendar callback | `{APP_URL}/api/integrations/google/callback` (Google only) |
+
+For local development:
+
+```
+http://localhost:3000/api/auth/callback/google
+http://localhost:3000/api/auth/callback/github
+http://localhost:3000/api/auth/callback/discord
+# etc.
+```
+
+### Step 3: Set Environment Variables
+
+Add the credentials to your `.env` file:
+
+```env .env
+# Google (also enables Calendar sync)
+GOOGLE_CLIENT_ID="123456789-abc.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="GOCSPX-xxxxxxxxxxxxxxxxx"
+
+# GitHub
+GITHUB_CLIENT_ID="Ov23lixxxxxxxxxxxxx"
+GITHUB_CLIENT_SECRET="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Discord
+DISCORD_CLIENT_ID="1234567890123456789"
+DISCORD_CLIENT_SECRET="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### Step 4: Verify
+
+Restart the server and navigate to the login page. Only providers with configured credentials will appear.
+
+The `/api/auth/providers-list` endpoint returns the currently active providers:
+
+```bash
+curl http://localhost:4000/api/v1/auth/providers-list
+```
+
+```json
+{
+  "providers": ["google", "github", "discord"]
+}
+```
+
+## Google Calendar Integration
+
+Google is special because the same OAuth credentials are used for both **social login** and **Google Calendar sync**. When configuring Google OAuth:
+
+1. Create OAuth 2.0 Web app credentials in Google Cloud Console
+2. Enable the **Google Calendar API** in the same project
+3. Add both redirect URIs:
+   - `{APP_URL}/api/auth/callback/google` (for login)
+   - `{APP_URL}/api/integrations/google/callback` (for Calendar)
+4. Request these scopes:
+   - `openid` — basic identity
+   - `profile` — user profile info
+   - `email` — user email
+   - `https://www.googleapis.com/auth/calendar` — full calendar access
+   - `https://www.googleapis.com/auth/calendar.events` — calendar events access
+
+## OAuth Flow
+
+The OAuth flow for all providers follows the standard pattern:
+
+```
+1. User clicks "Sign in with {Provider}" button
+2. Browser redirects to {APP_URL}/api/auth/sign-in/social/{provider}
+3. better-auth redirects to the provider's authorization page
+4. User authorizes and is redirected back with a ?code= parameter
+5. better-auth exchanges the code for tokens
+6. User is redirected to the frontend with an active session
+```
+
+For Google Calendar specifically, an additional flow exists:
+
+```
+1. Authenticated user clicks "Connect Google Calendar" in Settings
+2. Browser redirects to /api/integrations/google/connect
+3. Google authorization page with calendar scopes
+4. Callback exchanges code, encrypts tokens, creates CalendarAccount row
+5. Full-sync BullMQ job is enqueued
+```
+
+## Mobile (Expo) OAuth
+
+On mobile, the OAuth flow uses deep linking:
+
+1. The Expo app opens the provider's authorization page in an in-app browser
+2. After authorization, the redirect URI triggers the app's deep link handler
+3. The app exchanges the code for a session token
+4. The Bearer token is stored in `expo-secure-store`
